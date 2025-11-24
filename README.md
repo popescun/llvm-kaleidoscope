@@ -1,2 +1,1 @@
-# llvm-kaleidoskope
-A cleaner implementation of llvm Kaleidoscope toy language.
+Project can be tracked at [llvm kaleidscope](https://github.com/popescun/Learning/tree/main/llvm/kaleidoscope). 
