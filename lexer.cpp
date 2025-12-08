@@ -114,7 +114,7 @@ void Lexer::next_token() {
              next_token_ != to_token(ReservedToken::token_carriage_return));
 
     if (next_token_ != to_token(ReservedToken::token_eof)) {
-      next_token();
+      current_token_ = next_token_;
       return;
     }
   }

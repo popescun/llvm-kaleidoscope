@@ -20,10 +20,9 @@ enum class ReservedToken : Token {
   token_identifier = -4,
   token_number = -5,
   token_if = -6,
-  token_leading_parenthesis = '(',
   // punctuators
+  token_leading_parenthesis = '(',
   token_trailing_parenthesis = ')',
-  // reserved characters
   token_whitespace = ' ',
   token_comma = ',',
   token_semicolon = ';',
@@ -40,6 +39,7 @@ enum class ReservedToken : Token {
   // input
   token_new_line = '\n',
   token_carriage_return = '\r',
+  // comment
   token_comment = '#',
   token_dot = '.',
   token_eof = -9,
