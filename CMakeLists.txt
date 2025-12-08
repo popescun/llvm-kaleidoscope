@@ -103,3 +103,6 @@ target_link_libraries(${PROJECT_NAME}
   zstd::libzstd_shared
   ${ZLIB_LIBRARY}
 )
+
+add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
+  COMMAND cp ${CMAKE_SOURCE_DIR}/*.toy ${CMAKE_CURRENT_BINARY_DIR})

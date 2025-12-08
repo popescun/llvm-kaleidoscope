@@ -158,8 +158,6 @@ struct ParserAST {
   void handle_function_definition();
   void handle_extern();
   void handle_top_level_expression();
-  void log_error(const char *token) const;
-  void log_error_prototype(const char *token) const;
 
   /**
    * Handle input expressions with syntax:

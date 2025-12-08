@@ -6,13 +6,14 @@
 #define TOY_TOKEN_HPP
 
 #include <cstdint>
+#include <cstdio>
 
 namespace toy {
 using Token = std::int8_t;
 
 enum class ReservedToken : Token {
-  token_unknown = -1,
-
+  token_unknown = -100,
+  token_eof = EOF, // -1
   // keywords
   token_function_definition = -2,
   token_external_function = -3,
@@ -42,7 +43,6 @@ enum class ReservedToken : Token {
   // comment
   token_comment = '#',
   token_dot = '.',
-  token_eof = -9,
   // flow control
   token_then = -10,
   token_else = -11,

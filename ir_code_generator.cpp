@@ -3,6 +3,7 @@
 //
 
 #include "ir_code_generator.hpp"
+#include "utils.hpp"
 
 #include <llvm/IR/Verifier.h>
 
@@ -22,7 +23,8 @@ Value *
 IRCodeGenerator::operator()(const VariableExpressionAST &expression) const {
   auto *variable = parser_ast_.variable_names_[expression.name_];
   if (!variable) {
-    parser_ast_.log_error("unknown variable name");
+    log_error("unknown variable name", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     return {};
   }
   return variable;
@@ -75,7 +77,8 @@ IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
 Value *IRCodeGenerator::operator()(const UnaryExpressionAST &expression) const {
   Value *operand = expression.operand_->generate_IR_code();
   if (!operand) {
-    parser_ast_.log_error("unary expression operand code generation failed");
+    log_error("unary expression operand code generation failed",
+              parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
     return {};
   }
 
@@ -83,7 +86,8 @@ Value *IRCodeGenerator::operator()(const UnaryExpressionAST &expression) const {
       parser_ast_.get_function(std::string(keyword_token_unary) +
                                static_cast<char>(expression.operation_code_));
   if (!function) {
-    parser_ast_.log_error("unknown unary operator");
+    log_error("unknown unary operator", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     return {};
   }
 
@@ -94,13 +98,15 @@ Value *IRCodeGenerator::operator()(const CallExpressionAST &expression) const {
   // look up the name in the global module table
   auto *function = parser_ast_.get_function(expression.callee_);
   if (!function) {
-    parser_ast_.log_error("unknown function referenced");
+    log_error("unknown function referenced", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     return {};
   }
 
   // if argument mismatch error
   if (function->arg_size() != expression.arguments_.size()) {
-    parser_ast_.log_error("incorrect arguments size");
+    log_error("incorrect arguments size", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     return {};
   }
 
@@ -158,7 +164,8 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
   // `extern`s
   Function *function = parser_ast_.get_function(expression.prototype_name_);
   if (!function) {
-    parser_ast_.log_error("function cannot be redefined");
+    log_error("function cannot be redefined", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     return {};
   }
 
@@ -194,7 +201,8 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
 
   Value *body_value = expression.body_->generate_IR_code();
   if (!body_value) {
-    parser_ast_.log_error("function body generated IR code failed");
+    log_error("function body generated IR code failed", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     function->eraseFromParent();
     return {};
   }
@@ -202,14 +210,16 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
   // finish off the function
   Value *ret_value = parser_ast_.llvm_IR_builder_->CreateRet(body_value);
   if (!ret_value) {
-    parser_ast_.log_error("function create ret failed");
+    log_error("function create ret failed", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     function->eraseFromParent();
     return {};
   }
 
   // validate the generated code, checking for consistency
   if (verifyFunction(*function, &errs())) {
-    parser_ast_.log_error("function verification failed");
+    log_error("function verification failed", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
     function->eraseFromParent();
     return {};
   }

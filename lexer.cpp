@@ -4,11 +4,38 @@
 
 #include "lexer.hpp"
 
+#include <assert.h>
+
+#include "utils.hpp"
+
+#include <fstream>
+
 namespace toy {
+
+Lexer::Lexer() {
+  file_ = std::ifstream{"library.toy"};
+  if (!file_.is_open()) {
+    log_error("file library.toy not found", -1, 0);
+  }
+}
 
 void Lexer::next_token() {
   auto get_char = [this]() -> Token {
-    const auto c = static_cast<Token>(std::getchar());
+    std::filebuf *file_buffer{nullptr};
+    if (file_.is_open()) {
+      file_buffer = file_.rdbuf();
+    }
+
+    // fprintf(stderr, "eof: %d\n, next token:%c\n", file_buffer->sgetc() ==
+    // EOF, (char)next_token_);
+    auto c = static_cast<Token>(file_buffer ? file_buffer->sbumpc()
+                                            : std::getchar());
+    if (file_buffer && file_buffer->sgetc() == EOF) {
+      // c = EOF;
+      file_.close();
+      file_buffer = nullptr;
+    }
+
     if (c == to_token(ReservedToken::token_new_line)) {
       col_ = 0;
       ++row_;
@@ -109,7 +136,7 @@ void Lexer::next_token() {
   if (next_token_ == to_token(ReservedToken::token_comment)) {
     do {
       next_token_ = get_char();
-    } while (next_token_ != to_token(ReservedToken::token_eof) &&
+    } while (next_token_ != static_cast<Token>(EOF) &&
              next_token_ != to_token(ReservedToken::token_new_line) &&
              next_token_ != to_token(ReservedToken::token_carriage_return));
 
@@ -120,7 +147,7 @@ void Lexer::next_token() {
   }
 
   // check for end of file. Don't eat the EOF.
-  if (next_token_ == to_token(ReservedToken::token_eof)) {
+  if (next_token_ == static_cast<Token>(EOF)) {
     current_token_ = to_token(ReservedToken::token_eof);
     return;
   }

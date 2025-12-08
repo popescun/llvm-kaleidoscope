@@ -7,6 +7,7 @@
 
 #include "token.hpp"
 
+#include <fstream>
 #include <map>
 #include <string>
 
@@ -17,6 +18,10 @@ namespace toy {
  * one of these for known things.
  */
 struct Lexer {
+  /**
+   * Constructor;
+   */
+  Lexer();
   /**
    * Update current token and next character token from standard input.
    *
@@ -71,8 +76,9 @@ struct Lexer {
   BinaryOperationPrecedence binary_op_precedence_ = {
       {'m', -1}, {'<', 10}, {'+', 20}, {'-', 20}, {'*', 40}, {'M', 101}};
   // track where current token position
-  std::uint32_t row_{1};
-  std::uint32_t col_{0};
+  std::int32_t row_{0};
+  std::int32_t col_{0};
+  std::ifstream file_;
 };
 
 } // namespace toy

@@ -18,6 +18,7 @@
 #include <llvm/Transforms/Scalar/SimplifyCFG.h>
 
 #include "ir_code_generator.hpp"
+#include "utils.hpp"
 
 namespace toy {
 
@@ -92,7 +93,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_parenthesis_expression() {
   }
 
   if (lexer_.current_token_ != ')') {
-    log_error("expected ')'");
+    log_error("expected ')'", lexer_.row_, lexer_.col_);
     return {};
   }
   // eat ending ')'
@@ -131,7 +132,8 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_identifier_expression() {
 
       if (lexer_.current_token_ !=
           Lexer::to_token(ReservedToken::token_comma)) {
-        log_error("expected ')' or ',' in argument list");
+        log_error("expected ')' or ',' in argument list", lexer_.row_,
+                  lexer_.col_);
         return {};
       }
       lexer_.next_token();
@@ -158,7 +160,8 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_primary_expression() {
   case ReservedToken::token_for:
     return parse_for_expression();
   default:
-    log_error("unknown token when expecting an expression");
+    log_error("unknown token when expecting an expression", lexer_.row_,
+              lexer_.col_);
     return {};
   }
 }
@@ -251,7 +254,7 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
     // eat "unary"
     lexer_.next_token();
     if (!isascii(lexer_.current_token_)) {
-      log_error_prototype("expected unary operator");
+      log_error_prototype("expected unary operator", lexer_.row_, lexer_.col_);
       return {};
     }
     function_name = keyword_token_unary;
@@ -264,7 +267,7 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
     // eat "binary"
     lexer_.next_token();
     if (!isascii(lexer_.current_token_)) {
-      log_error_prototype("expected binary operator");
+      log_error_prototype("expected binary operator", lexer_.row_, lexer_.col_);
       return {};
     }
     function_name = keyword_token_binary;
@@ -277,7 +280,8 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
     if (lexer_.current_token_ == Lexer::to_token(ReservedToken::token_number)) {
       if (lexer_.number_value_ <= lexer_.binary_op_precedence_['m'] ||
           lexer_.number_value_ >= lexer_.binary_op_precedence_['M']) {
-        log_error_prototype("invalid precedence: must be 1..100");
+        log_error_prototype("invalid precedence: must be 1..100", lexer_.row_,
+                            lexer_.col_);
         return {};
       }
       binary_operator_precedence =
@@ -287,13 +291,14 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
     }
     break;
   default:
-    log_error_prototype("expected function name in prototype");
+    log_error_prototype("expected function name in prototype", lexer_.row_,
+                        lexer_.col_);
     return {};
   }
 
   if (lexer_.current_token_ !=
       Lexer::to_token(ReservedToken::token_leading_parenthesis)) {
-    log_error_prototype("expected '(' in prototype");
+    log_error_prototype("expected '(' in prototype", lexer_.row_, lexer_.col_);
     return {};
   }
 
@@ -308,7 +313,8 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
         const auto *variable =
             dynamic_cast<VariableExpressionAST *>(expression.get());
         if (!variable) {
-          log_error(" ExpressionAST to VariableExpressionAST cast failed");
+          log_error(" ExpressionAST to VariableExpressionAST cast failed",
+                    lexer_.row_, lexer_.col_);
           return {};
         }
         arguments_names.push_back(variable->name_);
@@ -323,7 +329,8 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
 
       if (lexer_.current_token_ !=
           Lexer::to_token(ReservedToken::token_comma)) {
-        log_error("expected ')' or ',' in argument list");
+        log_error("expected ')' or ',' in argument list", lexer_.row_,
+                  lexer_.col_);
         return {};
       }
       lexer_.next_token();
@@ -335,7 +342,8 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
 
   // verify right number of operands for operator
   if (type && arguments_names.size() != type) {
-    log_error_prototype("invalid number of operands for operator");
+    log_error_prototype("invalid number of operands for operator", lexer_.row_,
+                        lexer_.col_);
     return {};
   }
 
@@ -387,7 +395,8 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_if_expression() {
   }
 
   if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_then)) {
-    log_error("expected `then` expression in `if..then..else` expression");
+    log_error("expected `then` expression in `if..then..else` expression",
+              lexer_.row_, lexer_.col_);
     return {};
   }
 
@@ -400,7 +409,8 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_if_expression() {
   }
 
   if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_else)) {
-    log_error("expected `else` expression in `if..then..else` expression");
+    log_error("expected `else` expression in `if..then..else` expression",
+              lexer_.row_, lexer_.col_);
     return {};
   }
 
@@ -423,7 +433,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
 
   if (lexer_.current_token_ !=
       Lexer::to_token(ReservedToken::token_identifier)) {
-    log_error("expected identifier after for");
+    log_error("expected identifier after for", lexer_.row_, lexer_.col_);
     return {};
   }
 
@@ -434,7 +444,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
 
   if (lexer_.current_token_ !=
       Lexer::to_token(ReservedToken::token_assignment)) {
-    log_error("expected '=' after for");
+    log_error("expected '=' after for", lexer_.row_, lexer_.col_);
     return {};
   }
 
@@ -447,7 +457,8 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
   }
 
   if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_comma)) {
-    log_error("expected `,` after for start expression");
+    log_error("expected `,` after for start expression", lexer_.row_,
+              lexer_.col_);
     return {};
   }
 
@@ -471,7 +482,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
   }
 
   if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_in)) {
-    log_error("expected in after for expression");
+    log_error("expected in after for expression", lexer_.row_, lexer_.col_);
     return {};
   }
 
@@ -512,7 +523,7 @@ Function *ParserAST::get_function(const std::string &name) {
       return reinterpret_cast<Function *>(it->second->generate_IR_code());
     }
 
-    log_error("function prototype gen code failed");
+    log_error("function prototype gen code failed", lexer_.row_, lexer_.col_);
   }
 
   // if no existing prototype exists, return null
@@ -546,12 +557,12 @@ void ParserAST::handle_function_definition() {
           ThreadSafeModule(std::move(llvm_module_), std::move(llvm_context_)),
           resource_tracker);
       if (error) {
-        log_error("failed to add module");
+        log_error("failed to add module", lexer_.row_, lexer_.col_);
         // moving llvm::Error somehow make llvm to not crash on duplication
         // symbol, with error:
         //    Program aborted due to an unhandled Error:
         //    In ToyJIT, duplicate definition of symbol '_foo'
-        log_error(toString(std::move(error)).c_str());
+        log_error(toString(std::move(error)).c_str(), lexer_.row_, lexer_.col_);
       }
       init();
     }
@@ -596,8 +607,8 @@ void ParserAST::handle_top_level_expression() {
       auto error =
           jit_.addModule(std::move(thread_safe_module), resource_tracker);
       if (error) {
-        log_error("failed to add module");
-        log_error(toString(std::move(error)).c_str());
+        log_error("failed to add module", lexer_.row_, lexer_.col_);
+        log_error(toString(std::move(error)).c_str(), lexer_.row_, lexer_.col_);
       }
 
       // llvm module once added it cannot be modified, so it's safe to
@@ -607,9 +618,10 @@ void ParserAST::handle_top_level_expression() {
       // search the Jit for __anon_expr symbol
       auto expected_symbol = jit_.lookup(kAnonymousExpression);
       if (!expected_symbol) {
-        log_error("anonymous symbol not found");
+        log_error("anonymous symbol not found", lexer_.row_, lexer_.col_);
         auto expected_error = expected_symbol.takeError();
-        log_error(toString(std::move(expected_error)).c_str());
+        log_error(toString(std::move(expected_error)).c_str(), lexer_.row_,
+                  lexer_.col_);
       } else {
         // get the symbol's address and cast it to the right type (takes no
         // arguments, returns a double) so we can call it as a native function.
@@ -631,27 +643,23 @@ void ParserAST::handle_top_level_expression() {
   }
 }
 
-void ParserAST::log_error(const char *token) const {
-  fprintf(stderr, "error: %s at row %d, col %d\n", token, lexer_.row_,
-          lexer_.col_);
-}
-
-void ParserAST::log_error_prototype(const char *token) const {
-  log_error(token);
-}
-
 void ParserAST::run() {
   // prime the first token
-  fprintf(stderr, "toy> ");
+  if (!lexer_.file_.is_open()) {
+    fprintf(stderr, "toy> ");
+  }
   lexer_.next_token();
 
   while (true) {
     switch (Lexer::to_reserved_token(lexer_.current_token_)) {
     case ReservedToken::token_eof:
-      return;
+      fprintf(stderr, "toy> ");
+      lexer_.next_token();
+      break;
     // ignore top-level semicolon
     case ReservedToken::token_semicolon:
     case ReservedToken::token_new_line:
+      // case ReservedToken::token_eof:
       fprintf(stderr, "toy> ");
       lexer_.next_token();
       break;
@@ -659,7 +667,7 @@ void ParserAST::run() {
       try {
         handle_function_definition();
       } catch (const std::exception &e) {
-        log_error(e.what());
+        log_error(e.what(), lexer_.row_, lexer_.col_);
       }
       break;
     case ReservedToken::token_external_function:
