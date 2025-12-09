@@ -14,31 +14,31 @@ def unary-(v)
   0-v;
 
 # Define > with the same precedence as <.
-def binary> 10 (LHS, RHS)
-  RHS < LHS;
+def binary> 10 (lhs, rhs)
+  rhs < lhs;
 
 # Binary logical or, which does not short circuit.
-def binary| 5 (LHS, RHS)
-  if LHS then
+def binary| 5 (lhs, rhs)
+  if lhs then
     1
-  else if RHS then
+  else if rhs then
     1
   else
     0;
 
 # Binary logical and, which does not short circuit.
-def binary& 6 (LHS, RHS)
-  if !LHS then
+def binary& 6 (lhs, rhs)
+  if !lhs then
     0
   else
-    !!RHS;
+    !!rhs;
 
 # Define = with slightly lower precedence than relationals.
-def binary = 9 (LHS, RHS)
-  !(LHS < RHS | LHS > RHS);
+def binary = 9 (lhs, rhs)
+  !(lhs < rhs | lhs > rhs);
 
 # Define ':' for sequencing: as a low-precedence operator that ignores operands
-# and just returns the RHS.
+# and just returns the rhs.
 def binary : 1 (x, y) y;
 
 def printdensity(d)
