@@ -112,7 +112,9 @@ Value *IRCodeGenerator::operator()(const CallExpressionAST &expression) const {
 
   std::vector<Value *> arguments_values;
   for (const auto &arg : expression.arguments_) {
-    arguments_values.push_back(arg->generate_IR_code());
+    if (const auto ir_code = arg->generate_IR_code()) {
+      arguments_values.push_back(ir_code);
+    }
   }
   if (arguments_values.empty()) {
     return {};
