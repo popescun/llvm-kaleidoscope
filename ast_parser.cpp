@@ -541,7 +541,7 @@ void ParserAST::handle_function_definition() {
       fprintf(stderr, "parsed a function definition\n");
       ir_code->print(errs());
       fprintf(stderr, "\n");
-      const auto resource_tracker = jit_.jit_dylib_.createResourceTracker();
+
       // warning, this is an expected error:
       //   In ToyJIT, duplicate definition of symbol '_test'
       // see
@@ -553,18 +553,7 @@ void ParserAST::handle_function_definition() {
       //     ThreadSafeModule(std::move(llvm_module_),
       //     std::move(llvm_context_)), resource_tracker));
 
-      auto error = jit_.addModule(
-          ThreadSafeModule(std::move(llvm_module_), std::move(llvm_context_)),
-          resource_tracker);
-      if (error) {
-        log_error("failed to add module", lexer_.row_, lexer_.col_);
-        // moving llvm::Error somehow make llvm to not crash on duplication
-        // symbol, with error:
-        //    Program aborted due to an unhandled Error:
-        //    In ToyJIT, duplicate definition of symbol '_foo'
-        log_error(toString(std::move(error)).c_str(), lexer_.row_, lexer_.col_);
-      }
-      init();
+      add_module();
     }
   }
   // else {
@@ -599,21 +588,8 @@ void ParserAST::handle_top_level_expression() {
       fprintf(stderr, "parsed a top level expression\n");
       ir_code->print(errs());
       fprintf(stderr, "\n");
-      // create a `ResourceTracker` to track JIT'd memory allocated to our
-      // anonymous expression, that way we can free it after executing.
-      const auto resource_tracker = jit_.jit_dylib_.createResourceTracker();
-      auto thread_safe_module =
-          ThreadSafeModule(std::move(llvm_module_), std::move(llvm_context_));
-      auto error =
-          jit_.addModule(std::move(thread_safe_module), resource_tracker);
-      if (error) {
-        log_error("failed to add module", lexer_.row_, lexer_.col_);
-        log_error(toString(std::move(error)).c_str(), lexer_.row_, lexer_.col_);
-      }
 
-      // llvm module once added it cannot be modified, so it's safe to
-      // re-initialize
-      init();
+      add_module();
 
       // search the Jit for __anon_expr symbol
       auto expected_symbol = jit_.lookup(kAnonymousExpression);
@@ -631,7 +607,7 @@ void ParserAST::handle_top_level_expression() {
       }
 
       // delete the module containing anonymous expression from Jit
-      ExitOnErr(resource_tracker->remove());
+      ExitOnErr(jit_.jit_dylib_.getDefaultResourceTracker()->remove());
       //
       // // todo: fix, this removes the IR code, so is not printed on `dump()`
       // //  remove the anonymous expression
@@ -641,6 +617,30 @@ void ParserAST::handle_top_level_expression() {
     // skip token for error recovery
     lexer_.next_token();
   }
+}
+
+void ParserAST::add_module() {
+  // create a `ResourceTracker` to track JIT'd memory allocated to our
+  // anonymous expression, that way we can free it after executing.
+  const auto resource_tracker = jit_.jit_dylib_.createResourceTracker();
+  auto thread_safe_module =
+      ThreadSafeModule(std::move(llvm_module_), std::move(llvm_context_));
+
+  // llvm modules are IR code containers that can be added to the JIT or
+  // compiler. It does not matter how many modules are created and added but
+  // rather the names of the symbols and how they are grouped in the language
+  // logical containers (e.g. language modules(e.g a struct that represents code
+  // in a file), structs, globals(e.g. a unique struct per process that contains
+  // global symbols))
+  auto error = jit_.add_module(std::move(thread_safe_module), resource_tracker);
+  if (error) {
+    log_error("failed to add module", lexer_.row_, lexer_.col_);
+    log_error(toString(std::move(error)).c_str(), lexer_.row_, lexer_.col_);
+  }
+
+  // llvm module once added it cannot be modified, so it's safe to
+  // re-initialize
+  init();
 }
 
 void ParserAST::run() {

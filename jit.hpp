@@ -33,8 +33,8 @@ struct Jit {
   const llvm::DataLayout &get_data_layout() const;
   llvm::orc::JITDylib &get_jit_dylib() const;
   llvm::Error
-  addModule(llvm::orc::ThreadSafeModule thread_safe_module,
-            llvm::orc::ResourceTrackerSP resource_tracker_sp = nullptr);
+  add_module(llvm::orc::ThreadSafeModule thread_safe_module,
+             llvm::orc::ResourceTrackerSP resource_tracker_sp = nullptr);
   llvm::Expected<llvm::orc::ExecutorSymbolDef> lookup(llvm::StringRef name);
 
   std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;

@@ -158,6 +158,7 @@ struct ParserAST {
   void handle_function_definition();
   void handle_extern();
   void handle_top_level_expression();
+  void add_module();
 
   /**
    * Handle input expressions with syntax:

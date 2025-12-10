@@ -81,8 +81,8 @@ const DataLayout &Jit::get_data_layout() const { return data_layout_; }
 
 JITDylib &Jit::get_jit_dylib() const { return jit_dylib_; }
 
-Error Jit::addModule(ThreadSafeModule thread_safe_module,
-                     ResourceTrackerSP resource_tracker_sp) {
+Error Jit::add_module(ThreadSafeModule thread_safe_module,
+                      ResourceTrackerSP resource_tracker_sp) {
   if (!resource_tracker_sp) {
     resource_tracker_sp = jit_dylib_.getDefaultResourceTracker();
   }
