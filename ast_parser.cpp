@@ -553,7 +553,7 @@ void ParserAST::handle_function_definition() {
       //     ThreadSafeModule(std::move(llvm_module_),
       //     std::move(llvm_context_)), resource_tracker));
 
-      add_module();
+      (void)add_module();
     }
   }
   // else {
@@ -589,7 +589,7 @@ void ParserAST::handle_top_level_expression() {
       ir_code->print(errs());
       fprintf(stderr, "\n");
 
-      add_module();
+      auto resource_tracker = add_module();
 
       // search the Jit for __anon_expr symbol
       auto expected_symbol = jit_.lookup(kAnonymousExpression);
@@ -607,7 +607,7 @@ void ParserAST::handle_top_level_expression() {
       }
 
       // delete the module containing anonymous expression from Jit
-      ExitOnErr(jit_.jit_dylib_.getDefaultResourceTracker()->remove());
+      ExitOnErr(resource_tracker->remove());
       //
       // // todo: fix, this removes the IR code, so is not printed on `dump()`
       // //  remove the anonymous expression
@@ -619,7 +619,7 @@ void ParserAST::handle_top_level_expression() {
   }
 }
 
-void ParserAST::add_module() {
+ResourceTrackerSP ParserAST::add_module() {
   // create a `ResourceTracker` to track JIT'd memory allocated to our
   // anonymous expression, that way we can free it after executing.
   const auto resource_tracker = jit_.jit_dylib_.createResourceTracker();
@@ -641,6 +641,8 @@ void ParserAST::add_module() {
   // llvm module once added it cannot be modified, so it's safe to
   // re-initialize
   init();
+
+  return resource_tracker;
 }
 
 void ParserAST::run() {

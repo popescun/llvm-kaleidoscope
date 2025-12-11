@@ -10,6 +10,7 @@
 
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
+#include <llvm/ExecutionEngine/Orc/Core.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -158,7 +159,7 @@ struct ParserAST {
   void handle_function_definition();
   void handle_extern();
   void handle_top_level_expression();
-  void add_module();
+  llvm::orc::ResourceTrackerSP add_module();
 
   /**
    * Handle input expressions with syntax:
