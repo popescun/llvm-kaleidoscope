@@ -16,7 +16,6 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/IR/Value.h>
 #include <llvm/Passes/StandardInstrumentations.h>
 
 #include <map>

@@ -7,6 +7,8 @@
 
 #include "ast_parser.hpp"
 
+#include <llvm/IR/Value.h>
+
 #include <variant>
 
 namespace toy {

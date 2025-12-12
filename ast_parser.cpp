@@ -16,6 +16,7 @@
 #include <llvm/Transforms/Scalar/GVN.h>
 #include <llvm/Transforms/Scalar/Reassociate.h>
 #include <llvm/Transforms/Scalar/SimplifyCFG.h>
+#include <llvm/Transforms/Utils/Mem2Reg.h>
 
 #include "ir_code_generator.hpp"
 #include "utils.hpp"
@@ -60,7 +61,9 @@ void ParserAST::init() {
   standard_instrumentations_->registerCallbacks(
       *pass_instrumentation_callbacks_, module_analysis_manager_.get());
 
-  // add transform passes
+  // promote allocas to registers
+  function_pass_manager_->addPass(PromotePass());
+  // do simple "peephole" and bit-twiddling optimizations
   function_pass_manager_->addPass(InstCombinePass());
   // reassociate expression
   function_pass_manager_->addPass(ReassociatePass());
@@ -443,7 +446,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
   lexer_.next_token();
 
   if (lexer_.current_token_ !=
-      Lexer::to_token(ReservedToken::token_assignment)) {
+      Lexer::to_token(ReservedToken::token_operator_assignment)) {
     log_error("expected '=' after for", lexer_.row_, lexer_.col_);
     return {};
   }
@@ -629,6 +632,7 @@ void ParserAST::run() {
   }
   lexer_.next_token();
 
+  // top ::= definition | external | expression | ';'
   while (true) {
     switch (Lexer::to_reserved_token(lexer_.current_token_)) {
     case ReservedToken::token_eof:
@@ -638,8 +642,9 @@ void ParserAST::run() {
     // ignore top-level semicolon
     case ReservedToken::token_semicolon:
     case ReservedToken::token_new_line:
-      // case ReservedToken::token_eof:
-      fprintf(stderr, "toy> ");
+      if (!lexer_.file_.is_open()) {
+        fprintf(stderr, "toy> ");
+      }
       lexer_.next_token();
       break;
     case ReservedToken::token_function_definition:

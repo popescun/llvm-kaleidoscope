@@ -5,6 +5,7 @@
 #include "ir_code_generator.hpp"
 #include "utils.hpp"
 
+#include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Verifier.h>
 
 #include <map>
@@ -13,7 +14,7 @@ namespace toy {
 using namespace llvm;
 
 namespace {
-std::map<std::string, llvm::Value *> variable_names;
+std::map<std::string, AllocaInst *> variable_names;
 
 Function *get_function(ParserAST &parser_ast, const std::string &name) {
   // first, see if the function is present in the module
@@ -38,6 +39,19 @@ Function *get_function(ParserAST &parser_ast, const std::string &name) {
   // if no existing prototype exists, return null
   return {};
 }
+
+/**
+ * Create an alloca instruction in the entry block of the function.
+ * This is used for mutable variables etc.
+ */
+AllocaInst *create_entry_block_alloca(const ParserAST &parser_ast,
+                                      Function *function,
+                                      const StringRef variable_name) {
+  IRBuilder tmp_block(&function->getEntryBlock(),
+                      function->getEntryBlock().begin());
+  return tmp_block.CreateAlloca(Type::getDoubleTy(*parser_ast.llvm_context_),
+                                nullptr, variable_name);
+}
 } // namespace
 
 IRCodeGenerator::IRCodeGenerator(ParserAST &parser_ast)
@@ -51,13 +65,16 @@ IRCodeGenerator::operator()(const NumberExpressionAST &expression) const {
 
 Value *
 IRCodeGenerator::operator()(const VariableExpressionAST &expression) const {
+  // look this variable up in a function block
   auto *variable = variable_names[expression.name_];
   if (!variable) {
     log_error("unknown variable name", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);
     return {};
   }
-  return variable;
+  // load the value
+  return parser_ast_.llvm_IR_builder_->CreateLoad(
+      variable->getAllocatedType(), variable, expression.name_.c_str());
 }
 
 Value *
@@ -71,6 +88,33 @@ IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
   }
   // generate code for built-in operators
   switch (expression.operator_) {
+  case ReservedToken::token_operator_assignment: {
+    const auto *lhs =
+        dynamic_cast<VariableExpressionAST *>(expression.lhs_.get());
+    if (!lhs) {
+      log_error("destination of '=' must be a variable",
+                parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
+      return {};
+    }
+    auto *value = expression.rhs_->generate_IR_code();
+    if (!value) {
+      log_error("rhs_ code gen for assignment operator failed",
+                parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
+      return {};
+    }
+
+    // look up the name
+    auto *variable = variable_names[lhs->name_];
+    if (!variable) {
+      log_error("unknown variable name for assignment operator",
+                parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
+      return {};
+    }
+
+    parser_ast_.llvm_IR_builder_->CreateStore(value, variable);
+
+    return value;
+  }
   case ReservedToken::token_operator_add:
     // Note: last param in `CreateFAdd` is `Twine` type:
     // https://llvm.org/doxygen/classllvm_1_1Twine.html#details It's a faster
@@ -228,7 +272,15 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
   // todo: function definition?
   variable_names.clear();
   for (auto &arg : function->args()) {
-    variable_names[std::string{arg.getName()}] = &arg;
+    // create an alloca for this variable
+    auto *alloca =
+        create_entry_block_alloca(parser_ast_, function, arg.getName());
+
+    // store the initial value into the alloca
+    parser_ast_.llvm_IR_builder_->CreateStore(&arg, alloca);
+
+    // add arguments to variable symbol table
+    variable_names[std::string{arg.getName()}] = alloca;
   }
 
   Value *body_value = expression.body_->generate_IR_code();
@@ -253,6 +305,12 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
     log_error("function verification failed", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);
     function->eraseFromParent();
+    return {};
+  }
+
+  if (function_prototype->is_binary_operator()) {
+    parser_ast_.lexer_.binary_op_precedence_.erase(static_cast<Token>(
+        function_prototype->get_binary_operator_precedence()));
     return {};
   }
 
@@ -333,16 +391,22 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
 }
 
 Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
+  Function *parent_function =
+      parser_ast_.llvm_IR_builder_->GetInsertBlock()->getParent();
+
   // first, codegen the start code, without variable in scope
   Value *start_value = expression.start_->generate_IR_code();
   if (!start_value) {
     return {};
   }
 
+  // create an alloca for the variable in the entry block.
+  auto *alloca = create_entry_block_alloca(parser_ast_, parent_function,
+                                           expression.variable_name_);
+  // store the value into the alloca
+  parser_ast_.llvm_IR_builder_->CreateStore(start_value, alloca);
+
   // make new basic block for loop header, inserting after block
-  Function *parent_function =
-      parser_ast_.llvm_IR_builder_->GetInsertBlock()->getParent();
-  BasicBlock *pre_header_block = parser_ast_.llvm_IR_builder_->GetInsertBlock();
   BasicBlock *loop_block =
       BasicBlock::Create(*parser_ast_.llvm_context_, "loop", parent_function);
 
@@ -352,19 +416,13 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   // start insertion in loop block
   parser_ast_.llvm_IR_builder_->SetInsertPoint(loop_block);
 
-  // start PHI node with an entry for start
-  PHINode *phi_node = parser_ast_.llvm_IR_builder_->CreatePHI(
-      Type::getDoubleTy(*parser_ast_.llvm_context_), 2,
-      expression.variable_name_);
-  phi_node->addIncoming(start_value, pre_header_block);
-
-  // within loop, the variable is defined equal to the phi node value.
+  // within loop, the variable is defined equal to the alloca value.
   // If it shadows an existing variable, we have to restore it, so save it
   // now.
-  Value *old_value = variable_names[expression.variable_name_];
+  auto *old_value = variable_names[expression.variable_name_];
   // we store variable name to be consumed when `body_` code is generated.
   // Afterward, the old_value is restored.
-  variable_names[expression.variable_name_] = phi_node;
+  variable_names[expression.variable_name_] = alloca;
 
   // emit the body of the loop. This, like any other expression, can change
   // the current block. Note that we ignore the value computed by the body,
@@ -385,26 +443,24 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
     step_value = ConstantFP::get(*parser_ast_.llvm_context_, APFloat{1.0});
   }
 
-  Value *next_variable =
-      parser_ast_.llvm_IR_builder_->CreateFAdd(phi_node, step_value, "nextvar");
-
   // compute the end condition
   Value *end_condition = expression.end_->generate_IR_code();
   if (!end_condition) {
     return {};
   }
 
+  // reload, increment, and restore the alloca. This handles the case where the
+  // body of the loop mutates the variables.
+  auto *current_variable = parser_ast_.llvm_IR_builder_->CreateLoad(
+      alloca->getAllocatedType(), alloca, expression.variable_name_);
+  Value *next_variable = parser_ast_.llvm_IR_builder_->CreateFAdd(
+      current_variable, step_value, "nextvar");
+  parser_ast_.llvm_IR_builder_->CreateStore(next_variable, alloca);
+
   // convert end condition to a bool by comparing non-equal to 0.0
   end_condition = parser_ast_.llvm_IR_builder_->CreateFCmpONE(
       end_condition, ConstantFP::get(*parser_ast_.llvm_context_, APFloat{0.0}),
       "loopcond");
-
-  // get loop end block
-  BasicBlock *loop_end_block = parser_ast_.llvm_IR_builder_->GetInsertBlock();
-
-  // add new entry to the phi node for the back-edge
-  // node: in doc this line is inserted bellow, does it matter? A: no
-  phi_node->addIncoming(next_variable, loop_end_block);
 
   // create the block for the loop exit("afterloop"), and insert it
   // note: maybe is better " instead "afterloop"?
@@ -420,7 +476,7 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
 
   // restore the unshadowed variable
   if (old_value) {
-    variable_names[expression.variable_name_] = phi_node;
+    variable_names[expression.variable_name_] = old_value;
   } else {
     variable_names.erase(expression.variable_name_);
   }
