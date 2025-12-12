@@ -7,8 +7,38 @@
 
 #include <llvm/IR/Verifier.h>
 
+#include <map>
+
 namespace toy {
 using namespace llvm;
+
+namespace {
+std::map<std::string, llvm::Value *> variable_names;
+
+Function *get_function(ParserAST &parser_ast, const std::string &name) {
+  // first, see if the function is present in the module
+  if (auto *function = parser_ast.llvm_module_->getFunction(name)) {
+    return function;
+  }
+
+  // if not, check whether we can codegen the declaration from some existing
+  // prototype
+  auto it = parser_ast.function_prototypes_.find(name);
+  if (it != parser_ast.function_prototypes_.end()) {
+    // cast Value* to Function*
+    // todo: is there a llvm cast function?
+    if (it->second) {
+      return reinterpret_cast<Function *>(it->second->generate_IR_code());
+    }
+
+    log_error("function prototype gen code failed", parser_ast.lexer_.row_,
+              parser_ast.lexer_.col_);
+  }
+
+  // if no existing prototype exists, return null
+  return {};
+}
+} // namespace
 
 IRCodeGenerator::IRCodeGenerator(ParserAST &parser_ast)
     : parser_ast_{parser_ast} {}
@@ -21,7 +51,7 @@ IRCodeGenerator::operator()(const NumberExpressionAST &expression) const {
 
 Value *
 IRCodeGenerator::operator()(const VariableExpressionAST &expression) const {
-  auto *variable = parser_ast_.variable_names_[expression.name_];
+  auto *variable = variable_names[expression.name_];
   if (!variable) {
     log_error("unknown variable name", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);
@@ -67,8 +97,8 @@ IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
   // if it wasn't a builtin binary operator, it must be a user defined one.
   // Generate a call to it.
   Function *function =
-      parser_ast_.get_function(std::string(keyword_token_binary) +
-                               static_cast<char>(expression.operator_));
+      get_function(parser_ast_, std::string(keyword_token_binary) +
+                                    static_cast<char>(expression.operator_));
   assert(function && "binary operator not found");
   return parser_ast_.llvm_IR_builder_->CreateCall(function, {left, right},
                                                   "binop");
@@ -82,9 +112,9 @@ Value *IRCodeGenerator::operator()(const UnaryExpressionAST &expression) const {
     return {};
   }
 
-  Function *function =
-      parser_ast_.get_function(std::string(keyword_token_unary) +
-                               static_cast<char>(expression.operation_code_));
+  Function *function = get_function(
+      parser_ast_, std::string(keyword_token_unary) +
+                       static_cast<char>(expression.operation_code_));
   if (!function) {
     log_error("unknown unary operator", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);
@@ -96,7 +126,7 @@ Value *IRCodeGenerator::operator()(const UnaryExpressionAST &expression) const {
 
 Value *IRCodeGenerator::operator()(const CallExpressionAST &expression) const {
   // look up the name in the global module table
-  auto *function = parser_ast_.get_function(expression.callee_);
+  auto *function = get_function(parser_ast_, expression.callee_);
   if (!function) {
     log_error("unknown function referenced", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);
@@ -164,7 +194,7 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
   // check for existing function from previous `extern` declaration
   // todo: does it regard all functions added to this module, not only
   // `extern`s
-  Function *function = parser_ast_.get_function(expression.prototype_name_);
+  Function *function = get_function(parser_ast_, expression.prototype_name_);
   if (!function) {
     log_error("function cannot be redefined", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);
@@ -196,9 +226,9 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
   // record the function arguments in the function parameters map.
   // todo: how global `variable_names_` could be moved locally to a
   // todo: function definition?
-  parser_ast_.variable_names_.clear();
+  variable_names.clear();
   for (auto &arg : function->args()) {
-    parser_ast_.variable_names_[std::string{arg.getName()}] = &arg;
+    variable_names[std::string{arg.getName()}] = &arg;
   }
 
   Value *body_value = expression.body_->generate_IR_code();
@@ -331,10 +361,10 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   // within loop, the variable is defined equal to the phi node value.
   // If it shadows an existing variable, we have to restore it, so save it
   // now.
-  Value *old_value = parser_ast_.variable_names_[expression.variable_name_];
+  Value *old_value = variable_names[expression.variable_name_];
   // we store variable name to be consumed when `body_` code is generated.
   // Afterward, the old_value is restored.
-  parser_ast_.variable_names_[expression.variable_name_] = phi_node;
+  variable_names[expression.variable_name_] = phi_node;
 
   // emit the body of the loop. This, like any other expression, can change
   // the current block. Note that we ignore the value computed by the body,
@@ -390,9 +420,9 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
 
   // restore the unshadowed variable
   if (old_value) {
-    parser_ast_.variable_names_[expression.variable_name_] = phi_node;
+    variable_names[expression.variable_name_] = phi_node;
   } else {
-    parser_ast_.variable_names_.erase(expression.variable_name_);
+    variable_names.erase(expression.variable_name_);
   }
 
   // for expression always returns 0.0

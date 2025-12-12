@@ -507,29 +507,6 @@ std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_external() {
   return parse_function_prototype();
 }
 
-Function *ParserAST::get_function(const std::string &name) {
-  // first, see if the function is present in the module
-  if (auto *function = llvm_module_->getFunction(name)) {
-    return function;
-  }
-
-  // if not, check whether we can codegen the declaration from some existing
-  // prototype
-  auto it = function_prototypes_.find(name);
-  if (it != function_prototypes_.end()) {
-    // cast Value* to Function*
-    // todo: is there a llvm cast function?
-    if (it->second) {
-      return reinterpret_cast<Function *>(it->second->generate_IR_code());
-    }
-
-    log_error("function prototype gen code failed", lexer_.row_, lexer_.col_);
-  }
-
-  // if no existing prototype exists, return null
-  return {};
-}
-
 void ParserAST::handle_function_definition() {
   if (const auto function_definition = parse_function_definition()) {
     // todo: duplicate code, extract it to a function

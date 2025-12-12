@@ -154,8 +154,6 @@ struct ParserAST {
    */
   std::unique_ptr<FunctionPrototypeAST> parse_external();
 
-  [[nodiscard]] llvm::Function *get_function(const std::string &name);
-
   void handle_function_definition();
   void handle_extern();
   void handle_top_level_expression();
@@ -171,7 +169,6 @@ struct ParserAST {
   std::unique_ptr<llvm::LLVMContext> llvm_context_;
   std::unique_ptr<llvm::IRBuilder<>> llvm_IR_builder_;
   std::unique_ptr<llvm::Module> llvm_module_;
-  std::map<std::string, llvm::Value *> variable_names_;
   std::map<std::string, std::unique_ptr<FunctionPrototypeAST>>
       function_prototypes_;
 
