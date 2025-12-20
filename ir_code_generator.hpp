@@ -14,7 +14,7 @@
 namespace toy {
 
 using ExpressionASTVariant =
-    std::variant<NumberExpressionAST, VariableExpressionAST,
+    std::variant<NumberExpressionAST, VariableExpressionAST, VarExpressionAST,
                  BinaryExpressionAST, UnaryExpressionAST, CallExpressionAST,
                  FunctionPrototypeAST, FunctionDefinitionAST, IfExpressionAST,
                  ForExpressionAST>;
@@ -33,6 +33,7 @@ struct IRCodeGenerator {
 
   llvm::Value *operator()(const NumberExpressionAST &expression) const;
   llvm::Value *operator()(const VariableExpressionAST &expression) const;
+  llvm::Value *operator()(const VarExpressionAST &expression) const;
   llvm::Value *operator()(const BinaryExpressionAST &expression) const;
   llvm::Value *operator()(const UnaryExpressionAST &expression) const;
   llvm::Value *operator()(const CallExpressionAST &expression) const;

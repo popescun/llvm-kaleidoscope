@@ -39,8 +39,8 @@ struct NumberExpressionAST final : ExpressionAST {
   explicit NumberExpressionAST(ParserAST &parser_ast, double value);
   llvm::Value *generate_IR_code() override;
 
-  double value_;
   ParserAST &parser_ast_;
+  double value_;
 };
 
 /**
@@ -50,8 +50,25 @@ struct VariableExpressionAST final : ExpressionAST {
   explicit VariableExpressionAST(ParserAST &parser_ast, std::string name);
   llvm::Value *generate_IR_code() override;
 
-  std::string name_;
   ParserAST &parser_ast_;
+  std::string name_;
+};
+
+/**
+ * Expression class for var/in
+ */
+struct VarExpressionAST final : ExpressionAST {
+  VarExpressionAST(
+      ParserAST &parser_ast,
+      std::vector<std::pair<std::string, std::unique_ptr<ExpressionAST>>>
+          variables,
+      std::unique_ptr<ExpressionAST> body);
+  llvm::Value *generate_IR_code() override;
+
+  ParserAST &parser_ast_;
+  std::vector<std::pair<std::string, std::unique_ptr<ExpressionAST>>>
+      variables_;
+  std::unique_ptr<ExpressionAST> body_;
 };
 
 /**
@@ -63,9 +80,9 @@ struct BinaryExpressionAST final : ExpressionAST {
                                std::unique_ptr<ExpressionAST> rhs);
   llvm::Value *generate_IR_code() override;
 
+  ParserAST &parser_ast_;
   ReservedToken operator_;
   std::unique_ptr<ExpressionAST> lhs_, rhs_;
-  ParserAST &parser_ast_;
 };
 
 struct UnaryExpressionAST final : public ExpressionAST {
@@ -89,9 +106,9 @@ struct CallExpressionAST final : ExpressionAST {
 
   llvm::Value *generate_IR_code() override;
 
+  ParserAST &parser_ast_;
   std::string callee_;
   std::vector<std::unique_ptr<ExpressionAST>> arguments_;
-  ParserAST &parser_ast_;
 };
 
 /**
@@ -113,11 +130,11 @@ struct FunctionPrototypeAST : IRCode {
   [[nodiscard]] char get_operator_name() const;
   [[nodiscard]] std::uint8_t get_binary_operator_precedence() const;
 
+  ParserAST &parser_ast_;
   std::string name_;
   std::vector<std::string> arguments_names_;
   bool is_operator_;
   std::uint8_t binary_operator_precedence_;
-  ParserAST &parser_ast_;
 };
 
 /**
@@ -130,10 +147,10 @@ struct FunctionDefinitionAST : IRCode {
 
   llvm::Value *generate_IR_code() override;
 
+  ParserAST &parser_ast_;
   std::unique_ptr<FunctionPrototypeAST> prototype_;
   std::string prototype_name_{"none"};
   std::unique_ptr<ExpressionAST> body_;
-  ParserAST &parser_ast_;
 };
 
 struct IfExpressionAST : public ExpressionAST {

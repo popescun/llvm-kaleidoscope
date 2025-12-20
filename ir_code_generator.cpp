@@ -77,6 +77,57 @@ IRCodeGenerator::operator()(const VariableExpressionAST &expression) const {
       variable->getAllocatedType(), variable, expression.name_.c_str());
 }
 
+Value *IRCodeGenerator::operator()(const VarExpressionAST &expression) const {
+  std::vector<AllocaInst *> old_bindings;
+  Function *function =
+      parser_ast_.llvm_IR_builder_->GetInsertBlock()->getParent();
+
+  // register all variables and gen code for their initializer
+  for (std::size_t i = 0, n = expression.variables_.size(); i != n; ++i) {
+    const auto &variable_name = expression.variables_[i].first;
+    auto *variable_expression = expression.variables_[i].second.get();
+
+    // gen code for the initializer before adding the variable scope, this
+    // prevents the initializer from referencing the variable itself, and
+    // permits stuff like this:
+    //  var a = 1 in
+    //    var a = a in ... # refers to outer `a`
+    Value *init_value =
+        ConstantFP::get(*parser_ast_.llvm_context_, APFloat(0.0));
+    if (variable_expression) {
+      init_value = variable_expression->generate_IR_code();
+      if (!init_value) {
+        return {};
+      }
+    }
+
+    auto *alloc =
+        create_entry_block_alloca(parser_ast_, function, variable_name);
+    parser_ast_.llvm_IR_builder_->CreateStore(init_value, alloc);
+
+    // remember the olf variable binding so that we can restore the binding when
+    // we un-recurse
+    old_bindings.push_back(variable_names[variable_name]);
+
+    // remember this binding
+    variable_names[variable_name] = alloc;
+  }
+
+  // code gen the body, now that all variables are in scope
+  Value *body = expression.body_->generate_IR_code();
+  if (!body) {
+    return {};
+  }
+
+  // pop all our variables from scope
+  for (std::size_t i = 0, n = expression.variables_.size(); i != n; ++i) {
+    variable_names[expression.variables_[i].first] = old_bindings[i];
+  }
+
+  // return the body computation
+  return body;
+}
+
 Value *
 IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
 

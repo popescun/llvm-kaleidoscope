@@ -37,6 +37,19 @@ Value *VariableExpressionAST::generate_IR_code() {
   return std::visit(IRCodeGenerator{parser_ast_}, ExpressionASTVariant{*this});
 }
 
+VarExpressionAST::VarExpressionAST(
+    ParserAST &parser_ast,
+    std::vector<std::pair<std::string, std::unique_ptr<ExpressionAST>>>
+        variables,
+    std::unique_ptr<ExpressionAST> body)
+    : parser_ast_(parser_ast), variables_(std::move(variables)),
+      body_(std::move(body)) {}
+
+Value *VarExpressionAST::generate_IR_code() {
+  return std::visit(IRCodeGenerator{parser_ast_},
+                    ExpressionASTVariant{std::move(*this)});
+}
+
 BinaryExpressionAST::BinaryExpressionAST(ParserAST &parser_ast, Token op,
                                          std::unique_ptr<ExpressionAST> lhs,
                                          std::unique_ptr<ExpressionAST> rhs)

@@ -113,6 +113,11 @@ void Lexer::next_token() {
       return;
     }
 
+    if (identifier_ == keyword_token_var) {
+      current_token_ = to_token(ReservedToken::token_var);
+      return;
+    }
+
     // otherwise is an identifier
     current_token_ = to_token(ReservedToken::token_identifier);
     return;

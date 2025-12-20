@@ -47,8 +47,10 @@ enum class ReservedToken : Token {
   token_else = -11,
   token_for = -12,
   token_in = -13,
+  // var definition
+  token_var = -14,
   // exit program
-  token_exit = -14
+  token_exit = -15
 };
 
 #define STRINGIFY(s) #s
@@ -68,6 +70,7 @@ enum class ReservedToken : Token {
   // significant parts of the language in the library!
   keyword_token(binary);
   keyword_token(unary);
+  keyword_token(var);
 
 } // namespace toy
 

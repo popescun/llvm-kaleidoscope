@@ -4,7 +4,6 @@
 #include "jit.hpp"
 
 int main() {
-  auto jit = toy::Jit::create();
-  jit->run();
+  toy::Jit::create()->run();
   return 0;
 }
