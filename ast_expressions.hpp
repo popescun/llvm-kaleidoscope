@@ -43,6 +43,7 @@ struct NumberExpressionAST final : ExpressionAST {
   double value_;
 };
 
+// todo: rename it as it refers more to the function parameters?
 /**
  * Expression struct for referencing a variable, like "a".
  */
@@ -54,6 +55,7 @@ struct VariableExpressionAST final : ExpressionAST {
   std::string name_;
 };
 
+// todo: rename it VariableASTExpression
 /**
  * Expression class for var/in
  */

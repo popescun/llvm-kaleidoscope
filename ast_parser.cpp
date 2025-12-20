@@ -150,6 +150,15 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_identifier_expression() {
                                              std::move(arguments));
 }
 
+/**
+ * primary
+ *   ::= identifierexpr
+ *   ::= numberexpr
+ *   ::= parenexpr
+ *   ::= ifexpr
+ *   ::= forexpr
+ *   ::= varexpr
+ */
 std::unique_ptr<ExpressionAST> ParserAST::parse_primary_expression() {
   switch (Lexer::to_reserved_token(lexer_.current_token_)) {
   case ReservedToken::token_identifier:
@@ -162,6 +171,8 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_primary_expression() {
     return parse_if_expression();
   case ReservedToken::token_for:
     return parse_for_expression();
+  case ReservedToken::token_var:
+    return parse_var_expression();
   default:
     log_error("unknown token when expecting an expression", lexer_.row_,
               lexer_.col_);
@@ -172,19 +183,19 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_primary_expression() {
 std::unique_ptr<ExpressionAST>
 ParserAST::parse_binary_operation_rhs(Token expression_precedence,
                                       std::unique_ptr<ExpressionAST> lhs) {
-  // if this is a binop, find its precedence
+  // if this is a binary operation, find its precedence
   while (true) {
     const auto token_precedence = lexer_.get_current_token_precedence();
 
-    // if this is a binop that binds at least tightly as the current binop,
-    // consume it, otherwise we are done.
+    // if this is a binary operator that binds at least tightly as the current
+    // binary operator, consume it, otherwise we are done.
     if (token_precedence < expression_precedence) {
       return lhs;
     }
 
-    // alright, we know this is a binop
-    auto binary_op = lexer_.current_token_;
-    // eat binop
+    // alright, we know this is a binary operator
+    auto binary_operator = lexer_.current_token_;
+    // eat binary operator
     lexer_.next_token();
 
     // parse the unary expression after the binary operator
@@ -195,8 +206,8 @@ ParserAST::parse_binary_operation_rhs(Token expression_precedence,
 
     const auto next_precedence = lexer_.get_current_token_precedence();
 
-    // if binop binds less tightly with rhs than the operator after rhs, let the
-    // pending operator take rhs as its lhs.
+    // if binary operation binds less tightly with rhs than the operator after
+    // rhs, let the pending operator take rhs as its lhs.
     if (token_precedence < next_precedence) {
       rhs = parse_binary_operation_rhs(static_cast<Token>(token_precedence + 1),
                                        std::move(rhs));
@@ -205,7 +216,7 @@ ParserAST::parse_binary_operation_rhs(Token expression_precedence,
       }
     }
 
-    lhs = std::make_unique<BinaryExpressionAST>(*this, binary_op,
+    lhs = std::make_unique<BinaryExpressionAST>(*this, binary_operator,
                                                 std::move(lhs), std::move(rhs));
   }
 }
@@ -502,6 +513,72 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
       *this, variable_name, std::move(start_expression),
       std::move(end_expression), std::move(step_expression),
       std::move(body_expression));
+}
+
+std::unique_ptr<ExpressionAST> ParserAST::parse_var_expression() {
+  // eat `var`
+  lexer_.next_token();
+
+  std::vector<std::pair<std::string, std::unique_ptr<ExpressionAST>>> variables;
+
+  // at least one variable name is required
+  if (lexer_.current_token_ !=
+      Lexer::to_token(ReservedToken::token_identifier)) {
+    log_error("expected identifier after `var`", lexer_.row_, lexer_.col_);
+    return {};
+  }
+
+  while (true) {
+    const auto name = lexer_.identifier_;
+    // east identifier
+    lexer_.next_token();
+
+    // read the optional initializer
+    std::unique_ptr<ExpressionAST> initializer;
+    if (lexer_.current_token_ ==
+        Lexer::to_token(ReservedToken::token_operator_assignment)) {
+      // eat `=`
+      lexer_.next_token();
+
+      initializer = parse_expression();
+      if (!initializer) {
+        return {};
+      }
+    }
+
+    variables.emplace_back(name, std::move(initializer));
+
+    // end of var list, exit loop
+    if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_comma)) {
+      break;
+    }
+    // eat `,`
+    lexer_.next_token();
+
+    if (lexer_.current_token_ !=
+        Lexer::to_token(ReservedToken::token_identifier)) {
+      log_error("expected identifier after `,` in `var` identifier list",
+                lexer_.row_, lexer_.col_);
+      return {};
+    }
+  }
+
+  // at this point, we have to have `in`
+  if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_in)) {
+    log_error("expected `in` keyword after `var` identifier list", lexer_.row_,
+              lexer_.col_);
+    return {};
+  }
+  // eat `in`
+  lexer_.next_token();
+
+  auto body = parse_expression();
+  if (!body) {
+    return {};
+  }
+
+  return std::make_unique<VarExpressionAST>(*this, std::move(variables),
+                                            std::move(body));
 }
 
 std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_external() {

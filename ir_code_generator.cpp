@@ -83,29 +83,29 @@ Value *IRCodeGenerator::operator()(const VarExpressionAST &expression) const {
       parser_ast_.llvm_IR_builder_->GetInsertBlock()->getParent();
 
   // register all variables and gen code for their initializer
-  for (std::size_t i = 0, n = expression.variables_.size(); i != n; ++i) {
-    const auto &variable_name = expression.variables_[i].first;
-    auto *variable_expression = expression.variables_[i].second.get();
+  for (const auto &[first, second] : expression.variables_) {
+    const auto &variable_name = first;
+    auto *initializer_expression = second.get();
 
     // gen code for the initializer before adding the variable scope, this
     // prevents the initializer from referencing the variable itself, and
     // permits stuff like this:
     //  var a = 1 in
     //    var a = a in ... # refers to outer `a`
-    Value *init_value =
+    Value *initializer_value =
         ConstantFP::get(*parser_ast_.llvm_context_, APFloat(0.0));
-    if (variable_expression) {
-      init_value = variable_expression->generate_IR_code();
-      if (!init_value) {
+    if (initializer_expression) {
+      initializer_value = initializer_expression->generate_IR_code();
+      if (!initializer_value) {
         return {};
       }
     }
 
     auto *alloc =
         create_entry_block_alloca(parser_ast_, function, variable_name);
-    parser_ast_.llvm_IR_builder_->CreateStore(init_value, alloc);
+    parser_ast_.llvm_IR_builder_->CreateStore(initializer_value, alloc);
 
-    // remember the olf variable binding so that we can restore the binding when
+    // remember the old variable binding so that we can restore the binding when
     // we un-recurse
     old_bindings.push_back(variable_names[variable_name]);
 
@@ -131,20 +131,14 @@ Value *IRCodeGenerator::operator()(const VarExpressionAST &expression) const {
 Value *
 IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
 
-  auto *left = expression.lhs_->generate_IR_code();
-  // auto * left1 = operator()(*expression.lhs_);
-  auto *right = expression.rhs_->generate_IR_code();
-  if (!left || !right) {
-    return {};
-  }
-  // generate code for built-in operators
-  switch (expression.operator_) {
-  case ReservedToken::token_operator_assignment: {
+  // special case `=` because we don't want to gen code for `lhs` as an
+  // expression
+  if (expression.operator_ == ReservedToken::token_operator_assignment) {
     const auto *lhs =
         dynamic_cast<VariableExpressionAST *>(expression.lhs_.get());
     if (!lhs) {
-      log_error("destination of '=' must be a variable",
-                parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
+      log_error("left side of '=' must be a variable", parser_ast_.lexer_.row_,
+                parser_ast_.lexer_.col_);
       return {};
     }
     auto *value = expression.rhs_->generate_IR_code();
@@ -166,6 +160,15 @@ IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
 
     return value;
   }
+
+  auto *left = expression.lhs_->generate_IR_code();
+  auto *right = expression.rhs_->generate_IR_code();
+  if (!left || !right) {
+    return {};
+  }
+
+  // generate code for built-in operators
+  switch (expression.operator_) {
   case ReservedToken::token_operator_add:
     // Note: last param in `CreateFAdd` is `Twine` type:
     // https://llvm.org/doxygen/classllvm_1_1Twine.html#details It's a faster

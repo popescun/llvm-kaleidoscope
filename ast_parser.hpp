@@ -146,6 +146,15 @@ struct ParserAST {
   std::unique_ptr<ExpressionAST> parse_for_expression();
 
   /**
+   * Parse var expression with syntax:
+   *    varexpr ::= 'var' identifier ('=' expression)?
+   *                      (',' identifier ('=' expression)?)* 'in' expression
+   *
+   * @return a ExpressionAST
+   */
+  std::unique_ptr<ExpressionAST> parse_var_expression();
+
+  /**
    * Parse external n with syntax:
    *    external ::= 'extern' prototype
    *
