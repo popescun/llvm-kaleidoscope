@@ -98,10 +98,10 @@ void Lexer::next_token() {
       return;
     }
 
-    if (identifier_ == keyword_token_in) {
-      current_token_ = to_token(ReservedToken::token_in);
-      return;
-    }
+    // if (identifier_ == keyword_token_in) {
+    //   current_token_ = to_token(ReservedToken::token_in);
+    //   return;
+    // }
 
     if (identifier_ == keyword_token_unary) {
       current_token_ = to_token(ReservedToken::token_unary);

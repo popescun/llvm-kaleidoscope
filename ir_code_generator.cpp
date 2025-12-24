@@ -444,9 +444,32 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
   return phi_node;
 }
 
+// Output for-loop as:
+//   var = alloca double
+//   ...
+//   start = startexpr
+//   store start -> var
+//   goto loop
+// loop:
+//   ...
+//   bodyexpr
+//   ...
+// loopend:
+//   step = stepexpr
+//   endcond = endexpr
+//
+//   curvar = load var
+//   nextvar = curvar + step
+//   store nextvar -> var
+//   br endcond, loop, endloop
+// outloop:
 Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   Function *parent_function =
       parser_ast_.llvm_IR_builder_->GetInsertBlock()->getParent();
+
+  // create an alloca for the variable in the entry block.
+  auto *alloca = create_entry_block_alloca(parser_ast_, parent_function,
+                                           expression.variable_name_);
 
   // first, codegen the start code, without variable in scope
   Value *start_value = expression.start_->generate_IR_code();
@@ -454,13 +477,10 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
     return {};
   }
 
-  // create an alloca for the variable in the entry block.
-  auto *alloca = create_entry_block_alloca(parser_ast_, parent_function,
-                                           expression.variable_name_);
   // store the value into the alloca
   parser_ast_.llvm_IR_builder_->CreateStore(start_value, alloca);
 
-  // make new basic block for loop header, inserting after block
+  // make new basic block for loop header, inserting after current block
   BasicBlock *loop_block =
       BasicBlock::Create(*parser_ast_.llvm_context_, "loop", parent_function);
 
@@ -486,7 +506,7 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   }
 
   // emit step value
-  Value *step_value{};
+  Value *step_value{nullptr};
   if (expression.step_) {
     step_value = expression.step_->generate_IR_code();
     if (!step_value) {
@@ -497,31 +517,41 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
     step_value = ConstantFP::get(*parser_ast_.llvm_context_, APFloat{1.0});
   }
 
-  // compute the end condition
-  Value *end_condition = expression.end_->generate_IR_code();
-  if (!end_condition) {
-    return {};
-  }
-
   // reload, increment, and restore the alloca. This handles the case where the
   // body of the loop mutates the variables.
   auto *current_variable = parser_ast_.llvm_IR_builder_->CreateLoad(
-      alloca->getAllocatedType(), alloca, expression.variable_name_);
+      alloca->getAllocatedType(), alloca, expression.variable_name_.c_str());
   Value *next_variable = parser_ast_.llvm_IR_builder_->CreateFAdd(
       current_variable, step_value, "nextvar");
   parser_ast_.llvm_IR_builder_->CreateStore(next_variable, alloca);
 
+  // compute the end condition
+  Value *end_condition = expression.end_->generate_IR_code();
+  if (!end_condition) {
+    log_error("End condition code gen failed", parser_ast_.lexer_.row_,
+              parser_ast_.lexer_.col_);
+    return {};
+  }
+
   // convert end condition to a bool by comparing non-equal to 0.0
-  end_condition = parser_ast_.llvm_IR_builder_->CreateFCmpONE(
-      end_condition, ConstantFP::get(*parser_ast_.llvm_context_, APFloat{0.0}),
-      "loopcond");
+  // end_condition = parser_ast_.llvm_IR_builder_->CreateFCmpONE(
+  //     end_condition, ConstantFP::get(*parser_ast_.llvm_context_,
+  //     APFloat(0.0)), "loopcond");
+
+  // convert end condition to unsigned integer 1 bit ( this represents boolean
+  // in llvm)
+  end_condition = parser_ast_.llvm_IR_builder_->CreateFPToUI(
+      end_condition, Type::getInt1Ty(*parser_ast_.llvm_context_), "loopcond");
 
   // create the block for the loop exit("afterloop"), and insert it
-  // note: maybe is better " instead "afterloop"?
   BasicBlock *loop_after_block = BasicBlock::Create(
       *parser_ast_.llvm_context_, "afterloop", parent_function);
 
   // insert the condition branch into the end of loop end block
+  // todo: this behaves like do..while loop as the condition is at the end of
+  // todo: the loop block, whereas normally the for loop check the condition
+  // todo: first. I guess we need to handle it like in if..then where the
+  // todo: condition is checked first.
   parser_ast_.llvm_IR_builder_->CreateCondBr(end_condition, loop_block,
                                              loop_after_block);
 

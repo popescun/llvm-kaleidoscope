@@ -27,6 +27,8 @@ enum class ReservedToken : Token {
   token_whitespace = ' ',
   token_comma = ',',
   token_semicolon = ';',
+  token_leading_brace = '{',
+  token_trailing_brace = '}',
   // binary operations
   token_operator_assignment = '=',
   token_operator_add = '+',

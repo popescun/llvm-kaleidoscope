@@ -68,12 +68,20 @@ def mandelconverge(real, imag)
 
 # Compute and plot the mandelbrot set with the specified 2 dimensional range
 # info.
+#def mandelhelp(xmin, xmax, xstep, ymin, ymax, ystep)
+#  for y = ymin, y < ymax, ystep in (
+#    (for x = xmin, x < xmax, xstep in
+#       printdensity(mandelconverge(x,y)))
+#    : putch(10)
+#  );
+
 def mandelhelp(xmin, xmax, xstep, ymin, ymax, ystep)
-  for y = ymin, y < ymax, ystep in (
-    (for x = xmin, x < xmax, xstep in
-       printdensity(mandelconverge(x,y)))
-    : putch(10)
-  );
+  for y = ymin, y < ymax, ystep {
+    for x = xmin, x < xmax, xstep {
+      printdensity(mandelconverge(x,y));
+    }
+  }
+
 
 # mandel - This is a convenient helper function for plotting the mandelbrot set
 # from the specified position with the specified Magnification.
@@ -82,3 +90,15 @@ def mandel(realstart, imagstart, realmag, imagmag)
              imagstart, imagstart+imagmag*40, imagmag);
 
 #mandel(-2.3, -1.3, 0.05, 0.07);
+
+def foo(x)
+  for i = 1, i < x, 1 {
+    for j = 1, j < x, 1 {
+      putch(42);
+    }
+  };
+
+def foo1(x)
+  for i = 1, i < x, 1.0  {
+    putch(42);
+  };

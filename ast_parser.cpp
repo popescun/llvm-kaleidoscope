@@ -495,16 +495,27 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
     }
   }
 
-  if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_in)) {
-    log_error("expected in after for expression", lexer_.row_, lexer_.col_);
+  if (lexer_.current_token_ !=
+      Lexer::to_token(ReservedToken::token_leading_brace)) {
+    log_error("expected `{` after for expression", lexer_.row_, lexer_.col_);
     return {};
   }
 
-  // eat in
+  // eat `{`
   lexer_.next_token();
 
   auto body_expression = parse_expression();
   if (!body_expression) {
+    return {};
+  }
+
+  // eat `;`
+  lexer_.next_token();
+
+  if (lexer_.current_token_ !=
+      Lexer::to_token(ReservedToken::token_trailing_brace)) {
+    log_error("expected `}` after for expression block", lexer_.row_,
+              lexer_.col_);
     return {};
   }
 
@@ -719,9 +730,11 @@ void ParserAST::run() {
     // ignore top-level semicolon
     case ReservedToken::token_semicolon:
     case ReservedToken::token_new_line:
+    case ReservedToken::token_trailing_brace:
       if (!lexer_.file_.is_open()) {
         fprintf(stderr, "toy> ");
       }
+      // eat last token
       lexer_.next_token();
       break;
     case ReservedToken::token_function_definition:
