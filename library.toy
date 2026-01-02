@@ -102,3 +102,7 @@ def foo1(x)
   for i = 1, i < x, 1.0  {
     putch(42);
   };
+
+def test(x)
+  if x < 5 then
+    putch(42);

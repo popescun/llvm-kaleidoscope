@@ -25,11 +25,29 @@ struct IRCode {
   virtual llvm::Value *generate_IR_code() = 0;
 };
 
+enum class ExpressionType : std::uint8_t {
+  NumberExpressionAST,
+  VariableExpressionAST,
+  VarExpressionAST,
+  BinaryExpressionAST,
+  UnaryExpressionAST,
+  CallExpressionAST,
+  FunctionPrototypeAST,
+  FunctionDefinitionAST,
+  IfExpressionAST,
+  ForExpressionAST,
+};
+
+using IdExpressionAST = std::uint8_t;
+
 /**
  *  Base struct for all expression nodes.
  */
 struct ExpressionAST : IRCode {
+  ExpressionAST();
   ~ExpressionAST() override = default;
+
+  IdExpressionAST id_;
 };
 
 /**
@@ -145,33 +163,34 @@ struct FunctionPrototypeAST : IRCode {
 struct FunctionDefinitionAST : IRCode {
   FunctionDefinitionAST(ParserAST &parser_ast,
                         std::unique_ptr<FunctionPrototypeAST> prototype,
-                        std::unique_ptr<ExpressionAST> body);
+                        ExpressionAST *body);
 
   llvm::Value *generate_IR_code() override;
 
   ParserAST &parser_ast_;
   std::unique_ptr<FunctionPrototypeAST> prototype_;
   std::string prototype_name_{"none"};
-  std::unique_ptr<ExpressionAST> body_;
+  ExpressionAST *body_;
 };
 
 struct IfExpressionAST : public ExpressionAST {
   IfExpressionAST(ParserAST &parser_ast, std::unique_ptr<ExpressionAST> _if,
-                  std::unique_ptr<ExpressionAST> _then,
-                  std::unique_ptr<ExpressionAST> _else);
+                  ExpressionAST &_then, ExpressionAST *_else, bool has_else);
 
   llvm::Value *generate_IR_code() override;
 
   ParserAST &parser_ast_;
-  std::unique_ptr<ExpressionAST> if_, then_, else_;
+  std::unique_ptr<ExpressionAST> if_;
+  ExpressionAST &then_;
+  ExpressionAST *else_;
+  bool has_else_;
 };
 
 struct ForExpressionAST : public ExpressionAST {
   ForExpressionAST(ParserAST &parser_ast, std::string variable_name,
                    std::unique_ptr<ExpressionAST> start,
                    std::unique_ptr<ExpressionAST> end,
-                   std::unique_ptr<ExpressionAST> step,
-                   std::unique_ptr<ExpressionAST> body);
+                   std::unique_ptr<ExpressionAST> step, ExpressionAST &body);
 
   llvm::Value *generate_IR_code() override;
 
@@ -179,7 +198,17 @@ struct ForExpressionAST : public ExpressionAST {
   std::string variable_name_;
   // start_ is variable value,
   // end_ is condition expression
-  std::unique_ptr<ExpressionAST> start_, end_, step_, body_;
+  std::unique_ptr<ExpressionAST> start_, end_, step_;
+  ExpressionAST &body_;
+};
+
+struct ExpressionASTPool {
+  ExpressionASTPool();
+  static ExpressionASTPool &instance();
+  [[nodiscard]] const std::unique_ptr<ExpressionAST> &get(std::size_t id) const;
+
+  std::vector<std::unique_ptr<ExpressionAST>> pool_;
+  std::size_t size_{1000};
 };
 
 } // namespace toy

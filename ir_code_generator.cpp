@@ -404,7 +404,7 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
 
   // codegen `then` value
   parser_ast_.llvm_IR_builder_->SetInsertPoint(then_block);
-  Value *then_value = expression.then_->generate_IR_code();
+  Value *then_value = expression.then_.generate_IR_code();
   if (!then_value) {
     return {};
   }
@@ -420,9 +420,14 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
   // codegen `else` block
   parent_function->insert(parent_function->end(), else_block);
   parser_ast_.llvm_IR_builder_->SetInsertPoint(else_block);
-  Value *else_value = expression.else_->generate_IR_code();
-  if (!else_value) {
-    return {};
+  // workaround for nop instruction for else block if `else` expression  is
+  // missing
+  Value *else_value = ConstantFP::get(*parser_ast_.llvm_context_, APFloat(0.0));
+  if (expression.has_else_) {
+    else_value = expression.else_->generate_IR_code();
+    if (!else_value) {
+      return {};
+    }
   }
   parser_ast_.llvm_IR_builder_->CreateBr(merge_block);
   // codegen of `else` can change the current block, update else block for
@@ -501,7 +506,7 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   // emit the body of the loop. This, like any other expression, can change
   // the current block. Note that we ignore the value computed by the body,
   // but don't allow an error.
-  if (!expression.body_->generate_IR_code()) {
+  if (!expression.body_.generate_IR_code()) {
     return {};
   }
 
@@ -532,6 +537,11 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
               parser_ast_.lexer_.col_);
     return {};
   }
+
+  // auto if_expression = std::make_unique<IfExpressionAST>(parser_ast_,
+  // expression.end_,
+  //                                         nullptr,
+  //                                         nullptr);
 
   // convert end condition to a bool by comparing non-equal to 0.0
   // end_condition = parser_ast_.llvm_IR_builder_->CreateFCmpONE(

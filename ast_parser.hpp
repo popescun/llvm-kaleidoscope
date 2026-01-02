@@ -34,6 +34,12 @@ struct Jit;
  * AST parser as single-tone.
  */
 struct ParserAST {
+
+  struct ExpressionASTStorage {
+    std::unique_ptr<ExpressionAST> unique_ptr_;
+    ExpressionAST *raw_ptr_{nullptr};
+  };
+
   /**
    * Constructor.
    */
@@ -45,7 +51,7 @@ struct ParserAST {
    * Parse a number expression with syntax:
    *   numberexpr ::= number
    *
-   * @return a `NumberExpressionAST`
+   * @return a NumberExpressionAST
    */
   std::unique_ptr<ExpressionAST> parse_number_expression();
 
@@ -53,7 +59,7 @@ struct ParserAST {
    * Parse a parenthesis expression with syntax:
    *  parenexpr ::= '(' expression ')'
    *
-   * @return an ExpressionAST`
+   * @return an ExpressionAST
    */
   std::unique_ptr<ExpressionAST> parse_parenthesis_expression();
 
@@ -63,22 +69,22 @@ struct ParserAST {
    *    ::= identifier // simple variable reference
    *    ::= identifier '(' expression* ')' // a function call
    *
-   * @return an ExpressionAST`
+   * @return an ExpressionAST
    */
   std::unique_ptr<ExpressionAST> parse_identifier_expression();
 
   /**
    * Parse a primary expression.
    *
-   * @return an ExpressionAST`
+   * @return an ExpressionASTStorage
    */
-  std::unique_ptr<ExpressionAST> parse_primary_expression();
+  ExpressionASTStorage parse_primary_expression();
 
   /**
    * Parse binary operation right hand side with syntax:
    *  binoprhs ::= ('+' unary)* // * means recursion
    *
-   * @return an ExpressionAST`
+   * @return an ExpressionAST
    */
   std::unique_ptr<ExpressionAST>
   parse_binary_operation_rhs(Token expression_precedence,
@@ -90,17 +96,17 @@ struct ParserAST {
    *    ::= primary
    *    ::= '!' unary
    *
-   * @return an ExpressionAST`
+   * @return an ExpressionASTStorage
    */
-  std::unique_ptr<ExpressionAST> parse_unary_expression();
+  ExpressionASTStorage parse_unary_expression();
 
   /**
    * Parse an expression with syntax:
    *    expression ::= unary binoprhs
    *
-   * @return an ExpressionAST
+   * @return an ExpressionASTStorage
    */
-  std::unique_ptr<ExpressionAST> parse_expression();
+  ExpressionASTStorage parse_expression();
 
   /**
    * Parse a function prototype with syntax:
@@ -143,7 +149,7 @@ struct ParserAST {
    *
    * @return a ExpressionAST
    */
-  std::unique_ptr<ExpressionAST> parse_for_expression();
+  ExpressionAST *parse_for_expression();
 
   /**
    * Parse var expression with syntax:

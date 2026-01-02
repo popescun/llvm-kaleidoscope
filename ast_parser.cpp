@@ -91,7 +91,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_parenthesis_expression() {
   // eat opening '('
   lexer_.next_token();
   auto expression = parse_expression();
-  if (!expression) {
+  if (!expression.unique_ptr_) {
     return {};
   }
 
@@ -101,7 +101,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_parenthesis_expression() {
   }
   // eat ending ')'
   lexer_.next_token();
-  return expression;
+  return std::move(expression.unique_ptr_);
 }
 
 std::unique_ptr<ExpressionAST> ParserAST::parse_identifier_expression() {
@@ -122,8 +122,10 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_identifier_expression() {
   if (lexer_.current_token_ !=
       Lexer::to_token(ReservedToken::token_trailing_parenthesis)) {
     while (true) {
-      if (auto argument = parse_expression()) {
-        arguments.push_back(std::move(argument));
+      if (auto [unique_ptr, raw_ptr] = parse_expression();
+          unique_ptr || raw_ptr) {
+        assert(!raw_ptr);
+        arguments.push_back(std::move(unique_ptr));
       } else {
         return {};
       }
@@ -159,25 +161,34 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_identifier_expression() {
  *   ::= forexpr
  *   ::= varexpr
  */
-std::unique_ptr<ExpressionAST> ParserAST::parse_primary_expression() {
+ParserAST::ExpressionASTStorage ParserAST::parse_primary_expression() {
+  ExpressionASTStorage storage;
   switch (Lexer::to_reserved_token(lexer_.current_token_)) {
   case ReservedToken::token_identifier:
-    return parse_identifier_expression();
+    storage.unique_ptr_ = parse_identifier_expression();
+    break;
   case ReservedToken::token_number:
-    return parse_number_expression();
+    storage.unique_ptr_ = parse_number_expression();
+    break;
   case ReservedToken::token_leading_parenthesis:
-    return parse_parenthesis_expression();
+    storage.unique_ptr_ = parse_parenthesis_expression();
+    break;
   case ReservedToken::token_if:
-    return parse_if_expression();
+    storage.unique_ptr_ = parse_if_expression();
+    break;
   case ReservedToken::token_for:
-    return parse_for_expression();
+    storage.raw_ptr_ = parse_for_expression();
+    break;
   case ReservedToken::token_var:
-    return parse_var_expression();
+    storage.unique_ptr_ = parse_var_expression();
+    break;
   default:
     log_error("unknown token when expecting an expression", lexer_.row_,
               lexer_.col_);
-    return {};
+    break;
   }
+
+  return storage;
 }
 
 std::unique_ptr<ExpressionAST>
@@ -200,7 +211,7 @@ ParserAST::parse_binary_operation_rhs(Token expression_precedence,
 
     // parse the unary expression after the binary operator
     auto rhs = parse_unary_expression();
-    if (!rhs) {
+    if (!rhs.unique_ptr_) {
       return {};
     }
 
@@ -209,25 +220,25 @@ ParserAST::parse_binary_operation_rhs(Token expression_precedence,
     // if binary operation binds less tightly with rhs than the operator after
     // rhs, let the pending operator take rhs as its lhs.
     if (token_precedence < next_precedence) {
-      rhs = parse_binary_operation_rhs(static_cast<Token>(token_precedence + 1),
-                                       std::move(rhs));
-      if (!rhs) {
+      rhs.unique_ptr_ = parse_binary_operation_rhs(
+          static_cast<Token>(token_precedence + 1), std::move(rhs.unique_ptr_));
+      if (!rhs.unique_ptr_) {
         return {};
       }
     }
 
-    lhs = std::make_unique<BinaryExpressionAST>(*this, binary_operator,
-                                                std::move(lhs), std::move(rhs));
+    lhs = std::make_unique<BinaryExpressionAST>(
+        *this, binary_operator, std::move(lhs), std::move(rhs.unique_ptr_));
   }
 }
 
-std::unique_ptr<ExpressionAST> ParserAST::parse_unary_expression() {
+ParserAST::ExpressionASTStorage ParserAST::parse_unary_expression() {
   // if the current token is not an operator, it must be ap primary expression
   if (!isascii(lexer_.current_token_) ||
       lexer_.current_token_ ==
           Lexer::to_token(ReservedToken::token_leading_parenthesis) ||
       // todo: checking comma token might be wrong as it is used in function
-      // prototype as well?
+      // todo: prototype as well?
       lexer_.current_token_ == Lexer::to_token(ReservedToken::token_comma)) {
     return parse_primary_expression();
   }
@@ -236,20 +247,31 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_unary_expression() {
   auto operation_code = lexer_.current_token_;
   // eat the operation code
   lexer_.next_token();
-  if (auto operand = parse_unary_expression()) {
-    return std::make_unique<UnaryExpressionAST>(*this, operation_code,
-                                                std::move(operand));
+  if (auto [unique_ptr_, raw_ptr_] = parse_unary_expression(); unique_ptr_) {
+    ExpressionASTStorage storage;
+
+    storage.unique_ptr_ = std::make_unique<UnaryExpressionAST>(
+        *this, operation_code, std::move(unique_ptr_));
+    return storage;
   }
 
   return {};
 }
 
-std::unique_ptr<ExpressionAST> ParserAST::parse_expression() {
+ParserAST::ExpressionASTStorage ParserAST::parse_expression() {
   auto lhs = parse_unary_expression();
-  if (!lhs) {
-    return {};
+  // todo: add a is_valid method in ExpressionASTStorage
+  if (!lhs.unique_ptr_ && !lhs.raw_ptr_) {
+    return lhs;
   }
-  return parse_binary_operation_rhs(0, std::move(lhs));
+
+  ExpressionASTStorage storage;
+  if (lhs.unique_ptr_) {
+    assert(!lhs.raw_ptr_);
+    storage.unique_ptr_ =
+        parse_binary_operation_rhs(0, std::move(lhs.unique_ptr_));
+  }
+  return storage;
 }
 
 std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_function_prototype() {
@@ -379,21 +401,38 @@ std::unique_ptr<FunctionDefinitionAST> ParserAST::parse_function_definition() {
   }
 
   // building block
-  if (auto expression = parse_expression()) {
-    return std::make_unique<FunctionDefinitionAST>(
-        *this, std::move(function_prototype), std::move(expression));
+  // todo: for expression is a raw pointer
+  if (auto [unique_ptr, raw_ptr] = parse_expression(); unique_ptr || raw_ptr) {
+    if (unique_ptr) {
+      const auto id = unique_ptr->id_;
+      ExpressionASTPool::instance().pool_.emplace_back(std::move(unique_ptr));
+      return std::make_unique<FunctionDefinitionAST>(
+          *this, std::move(function_prototype),
+          ExpressionASTPool::instance().get(id).get());
+    } else {
+      return std::make_unique<FunctionDefinitionAST>(
+          *this, std::move(function_prototype), raw_ptr);
+    }
   }
 
   return {};
 }
 
 std::unique_ptr<FunctionDefinitionAST> ParserAST::parse_top_level_expression() {
-  if (auto expression = parse_expression()) {
+  if (auto [unique_ptr, raw_ptr] = parse_expression(); unique_ptr || raw_ptr) {
     // make a function prototype with anonymous name
     auto function_prototype = std::make_unique<FunctionPrototypeAST>(
         *this, kAnonymousExpression, std::vector<std::string>());
-    return std::make_unique<FunctionDefinitionAST>(
-        *this, std::move(function_prototype), std::move(expression));
+    if (unique_ptr) {
+      const auto id = unique_ptr->id_;
+      ExpressionASTPool::instance().pool_.emplace_back(std::move(unique_ptr));
+      return std::make_unique<FunctionDefinitionAST>(
+          *this, std::move(function_prototype),
+          ExpressionASTPool::instance().get(id).get());
+    } else {
+      return std::make_unique<FunctionDefinitionAST>(
+          *this, std::move(function_prototype), raw_ptr);
+    }
   }
   return {};
 }
@@ -404,7 +443,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_if_expression() {
 
   // condition
   auto if_condition = parse_expression();
-  if (!if_condition) {
+  if (!if_condition.unique_ptr_) {
     return {};
   }
 
@@ -418,30 +457,43 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_if_expression() {
   lexer_.next_token();
 
   auto then_expression = parse_expression();
-  if (!then_expression) {
+  if (!then_expression.unique_ptr_ && !then_expression.raw_ptr_) {
     return {};
   }
 
-  if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_else)) {
-    log_error("expected `else` expression in `if..then..else` expression",
-              lexer_.row_, lexer_.col_);
-    return {};
+  ExpressionASTStorage else_expression;
+  if (lexer_.current_token_ == Lexer::to_token(ReservedToken::token_else)) {
+    // eat `else`
+    lexer_.next_token();
+
+    else_expression = parse_expression();
+    if (!else_expression.unique_ptr_ && !else_expression.raw_ptr_) {
+      return {};
+    }
   }
 
-  // eat `else`
-  lexer_.next_token();
-
-  auto else_expression = parse_expression();
-  if (!else_expression) {
-    return {};
+  ExpressionAST *then_ptr{then_expression.raw_ptr_};
+  if (then_expression.unique_ptr_) {
+    const auto id = then_expression.unique_ptr_->id_;
+    ExpressionASTPool::instance().pool_.emplace_back(
+        std::move(then_expression.unique_ptr_));
+    then_ptr = ExpressionASTPool::instance().get(id).get();
   }
 
-  return std::make_unique<IfExpressionAST>(*this, std::move(if_condition),
-                                           std::move(then_expression),
-                                           std::move(else_expression));
+  ExpressionAST *else_ptr{else_expression.raw_ptr_};
+  if (else_expression.unique_ptr_) {
+    const auto id = else_expression.unique_ptr_->id_;
+    ExpressionASTPool::instance().pool_.emplace_back(
+        std::move(else_expression.unique_ptr_));
+    else_ptr = ExpressionASTPool::instance().get(id).get();
+  }
+
+  return std::make_unique<IfExpressionAST>(*this,
+                                           std::move(if_condition.unique_ptr_),
+                                           *then_ptr, else_ptr, else_ptr);
 }
 
-std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
+ExpressionAST *ParserAST::parse_for_expression() {
   // eat for
   lexer_.next_token();
 
@@ -466,7 +518,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
   lexer_.next_token();
 
   auto start_expression = parse_expression();
-  if (!start_expression) {
+  if (!start_expression.unique_ptr_) {
     return {};
   }
 
@@ -480,17 +532,17 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
   lexer_.next_token();
 
   auto end_expression = parse_expression();
-  if (!end_expression) {
+  if (!end_expression.unique_ptr_) {
     return {};
   }
 
   // the step value is optional
-  std::unique_ptr<ExpressionAST> step_expression;
+  ExpressionASTStorage step_expression;
   if (lexer_.current_token_ == Lexer::to_token(ReservedToken::token_comma)) {
     // eat comma before for step
     lexer_.next_token();
     step_expression = parse_expression();
-    if (!step_expression) {
+    if (!step_expression.unique_ptr_) {
       return {};
     }
   }
@@ -505,7 +557,7 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
   lexer_.next_token();
 
   auto body_expression = parse_expression();
-  if (!body_expression) {
+  if (!body_expression.unique_ptr_ && !body_expression.raw_ptr_) {
     return {};
   }
 
@@ -519,11 +571,16 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_for_expression() {
     return {};
   }
 
-  // todo: here variable_name is copied to constructor and then moved
-  return std::make_unique<ForExpressionAST>(
-      *this, variable_name, std::move(start_expression),
-      std::move(end_expression), std::move(step_expression),
-      std::move(body_expression));
+  auto expression = std::make_unique<ForExpressionAST>(
+      *this, std::move(variable_name), std::move(start_expression.unique_ptr_),
+      std::move(end_expression.unique_ptr_),
+      std::move(step_expression.unique_ptr_),
+      body_expression.unique_ptr_ ? *body_expression.unique_ptr_
+                                  : *body_expression.raw_ptr_);
+
+  const auto id = expression->id_;
+  ExpressionASTPool::instance().pool_.emplace_back(std::move(expression));
+  return ExpressionASTPool::instance().get(id).get();
 }
 
 std::unique_ptr<ExpressionAST> ParserAST::parse_var_expression() {
@@ -545,19 +602,19 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_var_expression() {
     lexer_.next_token();
 
     // read the optional initializer
-    std::unique_ptr<ExpressionAST> initializer;
+    ExpressionASTStorage initializer;
     if (lexer_.current_token_ ==
         Lexer::to_token(ReservedToken::token_operator_assignment)) {
       // eat `=`
       lexer_.next_token();
 
       initializer = parse_expression();
-      if (!initializer) {
+      if (!initializer.unique_ptr_) {
         return {};
       }
     }
 
-    variables.emplace_back(name, std::move(initializer));
+    variables.emplace_back(name, std::move(initializer.unique_ptr_));
 
     // end of var list, exit loop
     if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_comma)) {
@@ -584,12 +641,12 @@ std::unique_ptr<ExpressionAST> ParserAST::parse_var_expression() {
   lexer_.next_token();
 
   auto body = parse_expression();
-  if (!body) {
+  if (!body.unique_ptr_) {
     return {};
   }
 
   return std::make_unique<VarExpressionAST>(*this, std::move(variables),
-                                            std::move(body));
+                                            std::move(body.unique_ptr_));
 }
 
 std::unique_ptr<FunctionPrototypeAST> ParserAST::parse_external() {
