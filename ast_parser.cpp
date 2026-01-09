@@ -83,7 +83,7 @@ void ParserAST::init() {
 IdExpressionAST ParserAST::parse_number_expression() {
   auto expression =
       std::make_unique<NumberExpressionAST>(*this, lexer_.number_value_);
-  const auto id = ExpressionASTMap::instance().store(std::move(expression));
+  const auto id = STORE_EXPRESSION_IN_MAP(expression);
   lexer_.next_token();
   return id;
 }
@@ -114,7 +114,7 @@ IdExpressionAST ParserAST::parse_identifier_expression() {
   if (lexer_.current_token_ !=
       Lexer::to_token(ReservedToken::token_leading_parenthesis)) {
     auto expression = std::make_unique<VariableExpressionAST>(*this, id_name);
-    return ExpressionASTMap::instance().store(std::move(expression));
+    return STORE_EXPRESSION_IN_MAP(expression);
   }
 
   // function call
@@ -150,7 +150,7 @@ IdExpressionAST ParserAST::parse_identifier_expression() {
 
   auto expression =
       std::make_unique<CallExpressionAST>(*this, id_name, std::move(arguments));
-  return ExpressionASTMap::instance().store(std::move(expression));
+  return STORE_EXPRESSION_IN_MAP(expression);
 }
 
 /**
@@ -223,7 +223,7 @@ ParserAST::parse_binary_operation_rhs(Token expression_precedence,
 
     auto expression =
         std::make_unique<BinaryExpressionAST>(*this, binary_operator, lhs, rhs);
-    lhs = ExpressionASTMap::instance().store(std::move(expression));
+    lhs = STORE_EXPRESSION_IN_MAP(expression);
   }
 }
 
@@ -245,7 +245,7 @@ IdExpressionAST ParserAST::parse_unary_expression() {
   if (auto id = parse_unary_expression(); id != 0) {
     auto expression =
         std::make_unique<UnaryExpressionAST>(*this, operation_code, id);
-    return ExpressionASTMap::instance().store(std::move(expression));
+    return STORE_EXPRESSION_IN_MAP(expression);
   }
 
   return {};
@@ -377,7 +377,7 @@ IdExpressionAST ParserAST::parse_function_prototype() {
   auto expression = std::make_unique<FunctionPrototypeAST>(
       *this, function_name, std::move(arguments_names), type != 0,
       binary_operator_precedence);
-  return ExpressionASTMap::instance().store(std::move(expression));
+  return STORE_EXPRESSION_IN_MAP(expression);
 }
 
 IdExpressionAST ParserAST::parse_function_definition() {
@@ -394,7 +394,7 @@ IdExpressionAST ParserAST::parse_function_definition() {
   if (auto id = parse_expression(); id != InvalidIdExpressionAST) {
     auto expression =
         std::make_unique<FunctionDefinitionAST>(*this, function_prototype, id);
-    return ExpressionASTMap::instance().store(std::move(expression));
+    return STORE_EXPRESSION_IN_MAP(expression);
   }
 
   return InvalidIdExpressionAST;
@@ -406,11 +406,10 @@ IdExpressionAST ParserAST::parse_top_level_expression() {
     // make a function prototype with anonymous name
     auto prototype = std::make_unique<FunctionPrototypeAST>(
         *this, kAnonymousExpression, std::vector<std::string>());
-    const auto prototype_id =
-        ExpressionASTMap::instance().store(std::move(prototype));
+    const auto prototype_id = STORE_EXPRESSION_IN_MAP(prototype);
     auto function =
         std::make_unique<FunctionDefinitionAST>(*this, prototype_id, body_id);
-    return ExpressionASTMap::instance().store(std::move(function));
+    return STORE_EXPRESSION_IN_MAP(function);
   }
   return InvalidIdExpressionAST;
 }
@@ -452,7 +451,7 @@ IdExpressionAST ParserAST::parse_if_expression() {
 
   auto expression = std::make_unique<IfExpressionAST>(
       *this, if_condition, then_expression, else_expression);
-  return ExpressionASTMap::instance().store(std::move(expression));
+  return STORE_EXPRESSION_IN_MAP(expression);
 }
 
 IdExpressionAST ParserAST::parse_for_expression() {
@@ -537,7 +536,7 @@ IdExpressionAST ParserAST::parse_for_expression() {
       *this, std::move(variable_name), start_expression, end_expression,
       step_expression, body_expression);
 
-  return ExpressionASTMap::instance().store(std::move(expression));
+  return STORE_EXPRESSION_IN_MAP(expression);
 }
 
 IdExpressionAST ParserAST::parse_var_expression() {
@@ -604,7 +603,7 @@ IdExpressionAST ParserAST::parse_var_expression() {
 
   auto expression =
       std::make_unique<VarExpressionAST>(*this, std::move(variables), body);
-  return ExpressionASTMap::instance().store(std::move(expression));
+  return STORE_EXPRESSION_IN_MAP(expression);
 }
 
 IdExpressionAST ParserAST::parse_external() {

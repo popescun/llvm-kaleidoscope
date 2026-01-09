@@ -211,6 +211,8 @@ struct ExpressionASTMap {
 
 #define GET_EXPRESSION_FROM_MAP(id) ExpressionASTMap::instance().get(id)
 #define GENERATE_IR_CODE(id) GET_EXPRESSION_FROM_MAP(id)->generate_IR_code()
+#define STORE_EXPRESSION_IN_MAP(expression)                                    \
+  ExpressionASTMap::instance().store(std::move(expression))
 
 } // namespace toy
 
