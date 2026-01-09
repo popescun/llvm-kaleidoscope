@@ -29,7 +29,7 @@ Function *get_function(ParserAST &parser_ast, const std::string &name) {
     // cast Value* to Function*
     // todo: is there a llvm cast function?
     if (it->second) {
-      return reinterpret_cast<Function *>(it->second->generate_IR_code());
+      return reinterpret_cast<Function *>(GENERATE_IR_CODE(it->second));
     }
 
     log_error("function prototype gen code failed", parser_ast.lexer_.row_,
@@ -85,7 +85,8 @@ Value *IRCodeGenerator::operator()(const VarExpressionAST &expression) const {
   // register all variables and gen code for their initializer
   for (const auto &[first, second] : expression.variables_) {
     const auto &variable_name = first;
-    auto *initializer_expression = second.get();
+    const auto &initializer_expression =
+        ExpressionASTMap::instance().get(second);
 
     // gen code for the initializer before adding the variable scope, this
     // prevents the initializer from referencing the variable itself, and
@@ -114,7 +115,7 @@ Value *IRCodeGenerator::operator()(const VarExpressionAST &expression) const {
   }
 
   // code gen the body, now that all variables are in scope
-  Value *body = expression.body_->generate_IR_code();
+  Value *body = GENERATE_IR_CODE(expression.body_);
   if (!body) {
     return {};
   }
@@ -134,14 +135,14 @@ IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
   // special case `=` because we don't want to gen code for `lhs` as an
   // expression
   if (expression.operator_ == ReservedToken::token_operator_assignment) {
-    const auto *lhs =
-        dynamic_cast<VariableExpressionAST *>(expression.lhs_.get());
+    const auto *lhs = dynamic_cast<VariableExpressionAST *>(
+        GET_EXPRESSION_FROM_MAP(expression.lhs_).get());
     if (!lhs) {
       log_error("left side of '=' must be a variable", parser_ast_.lexer_.row_,
                 parser_ast_.lexer_.col_);
       return {};
     }
-    auto *value = expression.rhs_->generate_IR_code();
+    auto *value = GENERATE_IR_CODE(expression.rhs_);
     if (!value) {
       log_error("rhs_ code gen for assignment operator failed",
                 parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
@@ -161,8 +162,8 @@ IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
     return value;
   }
 
-  auto *left = expression.lhs_->generate_IR_code();
-  auto *right = expression.rhs_->generate_IR_code();
+  auto *left = GENERATE_IR_CODE(expression.lhs_);
+  auto *right = GENERATE_IR_CODE(expression.rhs_);
   if (!left || !right) {
     return {};
   }
@@ -203,7 +204,7 @@ IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
 }
 
 Value *IRCodeGenerator::operator()(const UnaryExpressionAST &expression) const {
-  Value *operand = expression.operand_->generate_IR_code();
+  Value *operand = GENERATE_IR_CODE(expression.operand_);
   if (!operand) {
     log_error("unary expression operand code generation failed",
               parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
@@ -239,8 +240,8 @@ Value *IRCodeGenerator::operator()(const CallExpressionAST &expression) const {
   }
 
   std::vector<Value *> arguments_values;
-  for (const auto &arg : expression.arguments_) {
-    if (const auto ir_code = arg->generate_IR_code()) {
+  for (const auto arg : expression.arguments_) {
+    if (const auto ir_code = GENERATE_IR_CODE(arg)) {
       arguments_values.push_back(ir_code);
     }
   }
@@ -305,7 +306,11 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
       parser_ast_.function_prototypes_.find(expression.prototype_name_);
   assert(it != parser_ast_.function_prototypes_.end() &&
          "function prototype not found");
-  const auto &function_prototype = it->second;
+  const auto &ast_expression = GET_EXPRESSION_FROM_MAP(it->second);
+  assert(ast_expression->type_ == ExpressionTypeAST::FunctionPrototypeAST &&
+         "wrong expression type");
+  const auto *function_prototype =
+      dynamic_cast<FunctionPrototypeAST *>(ast_expression.get());
   assert(function_prototype && "function prototype is null");
   if (function_prototype->is_binary_operator()) {
     parser_ast_.lexer_
@@ -337,7 +342,7 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
     variable_names[std::string{arg.getName()}] = alloca;
   }
 
-  Value *body_value = expression.body_->generate_IR_code();
+  Value *body_value = GENERATE_IR_CODE(expression.body_);
   if (!body_value) {
     log_error("function body generated IR code failed", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);
@@ -378,7 +383,7 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
 }
 
 Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
-  Value *if_value = expression.if_->generate_IR_code();
+  Value *if_value = GENERATE_IR_CODE(expression.if_);
   if (!if_value) {
     return {};
   }
@@ -404,7 +409,7 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
 
   // codegen `then` value
   parser_ast_.llvm_IR_builder_->SetInsertPoint(then_block);
-  Value *then_value = expression.then_.generate_IR_code();
+  Value *then_value = GENERATE_IR_CODE(expression.then_);
   if (!then_value) {
     return {};
   }
@@ -423,8 +428,8 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
   // workaround for nop instruction for else block if `else` expression  is
   // missing
   Value *else_value = ConstantFP::get(*parser_ast_.llvm_context_, APFloat(0.0));
-  if (expression.has_else_) {
-    else_value = expression.else_->generate_IR_code();
+  if (expression.else_ != InvalidIdExpressionAST) {
+    else_value = GENERATE_IR_CODE(expression.else_);
     if (!else_value) {
       return {};
     }
@@ -477,7 +482,7 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
                                            expression.variable_name_);
 
   // first, codegen the start code, without variable in scope
-  Value *start_value = expression.start_->generate_IR_code();
+  Value *start_value = GENERATE_IR_CODE(expression.start_);
   if (!start_value) {
     return {};
   }
@@ -506,14 +511,14 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   // emit the body of the loop. This, like any other expression, can change
   // the current block. Note that we ignore the value computed by the body,
   // but don't allow an error.
-  if (!expression.body_.generate_IR_code()) {
+  if (!GENERATE_IR_CODE(expression.body_)) {
     return {};
   }
 
   // emit step value
   Value *step_value{nullptr};
   if (expression.step_) {
-    step_value = expression.step_->generate_IR_code();
+    step_value = GENERATE_IR_CODE(expression.step_);
     if (!step_value) {
       return {};
     }
@@ -531,7 +536,7 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   parser_ast_.llvm_IR_builder_->CreateStore(next_variable, alloca);
 
   // compute the end condition
-  Value *end_condition = expression.end_->generate_IR_code();
+  Value *end_condition = GENERATE_IR_CODE(expression.end_);
   if (!end_condition) {
     log_error("End condition code gen failed", parser_ast_.lexer_.row_,
               parser_ast_.lexer_.col_);

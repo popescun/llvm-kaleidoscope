@@ -34,12 +34,6 @@ struct Jit;
  * AST parser as single-tone.
  */
 struct ParserAST {
-
-  struct ExpressionASTStorage {
-    std::unique_ptr<ExpressionAST> unique_ptr_;
-    ExpressionAST *raw_ptr_{nullptr};
-  };
-
   /**
    * Constructor.
    */
@@ -51,17 +45,17 @@ struct ParserAST {
    * Parse a number expression with syntax:
    *   numberexpr ::= number
    *
-   * @return a NumberExpressionAST
+   * @return expression id
    */
-  std::unique_ptr<ExpressionAST> parse_number_expression();
+  IdExpressionAST parse_number_expression();
 
   /**
    * Parse a parenthesis expression with syntax:
    *  parenexpr ::= '(' expression ')'
    *
-   * @return an ExpressionAST
+   * @return expression id
    */
-  std::unique_ptr<ExpressionAST> parse_parenthesis_expression();
+  IdExpressionAST parse_parenthesis_expression();
 
   /**
    * Parse an identifier expression with syntax:
@@ -69,26 +63,25 @@ struct ParserAST {
    *    ::= identifier // simple variable reference
    *    ::= identifier '(' expression* ')' // a function call
    *
-   * @return an ExpressionAST
+   * @return expression id
    */
-  std::unique_ptr<ExpressionAST> parse_identifier_expression();
+  IdExpressionAST parse_identifier_expression();
 
   /**
    * Parse a primary expression.
    *
-   * @return an ExpressionASTStorage
+   * @return expression id
    */
-  ExpressionASTStorage parse_primary_expression();
+  IdExpressionAST parse_primary_expression();
 
   /**
    * Parse binary operation right hand side with syntax:
    *  binoprhs ::= ('+' unary)* // * means recursion
    *
-   * @return an ExpressionAST
+   * @return expression id
    */
-  std::unique_ptr<ExpressionAST>
-  parse_binary_operation_rhs(Token expression_precedence,
-                             std::unique_ptr<ExpressionAST> lhs);
+  IdExpressionAST parse_binary_operation_rhs(Token expression_precedence,
+                                             IdExpressionAST lhs);
 
   /**
    * Parse unary expression with syntax:
@@ -96,17 +89,17 @@ struct ParserAST {
    *    ::= primary
    *    ::= '!' unary
    *
-   * @return an ExpressionASTStorage
+   * @return expression id
    */
-  ExpressionASTStorage parse_unary_expression();
+  IdExpressionAST parse_unary_expression();
 
   /**
    * Parse an expression with syntax:
    *    expression ::= unary binoprhs
    *
-   * @return an ExpressionASTStorage
+   * @return expression id
    */
-  ExpressionASTStorage parse_expression();
+  IdExpressionAST parse_expression();
 
   /**
    * Parse a function prototype with syntax:
@@ -114,59 +107,59 @@ struct ParserAST {
    *              ::= binary LETTER number? (id, id)
    *              ::= unary LETTER (id)
    *
-   * @return a FunctionPrototypeAST
+   * @return expression id
    */
-  std::unique_ptr<FunctionPrototypeAST> parse_function_prototype();
+  IdExpressionAST parse_function_prototype();
 
   /**
-   * Parse a function definition with syntax:
+   * Parse a function definition with ysntax:
    *    definition ::= 'def' prototype expression
    *
-   * @return a FunctionDefinitionAST
+   * @return expression id
    */
-  std::unique_ptr<FunctionDefinitionAST> parse_function_definition();
+  IdExpressionAST parse_function_definition();
 
   /**
    * Parse top level expression with syntax:
    *    toplevelexpr ::= expression
    *
-   * @return a FunctionDefinitionAST
+   * @return expression id
    */
-  std::unique_ptr<FunctionDefinitionAST> parse_top_level_expression();
+  IdExpressionAST parse_top_level_expression();
 
   /**
    * Parse if expression with syntax:
    *    ifexpr ::= 'if' expression 'then' expression 'else' expression
    *
-   * @return a ExpressionAST
+   * @return expression id
    */
-  std::unique_ptr<ExpressionAST> parse_if_expression();
+  IdExpressionAST parse_if_expression();
 
   /**
    * Parse for expression with syntax:
    *    forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in'
    * expression
    *
-   * @return a ExpressionAST
+   * @return expression id
    */
-  ExpressionAST *parse_for_expression();
+  IdExpressionAST parse_for_expression();
 
   /**
    * Parse var expression with syntax:
    *    varexpr ::= 'var' identifier ('=' expression)?
    *                      (',' identifier ('=' expression)?)* 'in' expression
    *
-   * @return a ExpressionAST
+   * @return expression id
    */
-  std::unique_ptr<ExpressionAST> parse_var_expression();
+  IdExpressionAST parse_var_expression();
 
   /**
    * Parse external n with syntax:
    *    external ::= 'extern' prototype
    *
-   * @return a FunctionPrototypeAST
+   * @return expression id
    */
-  std::unique_ptr<FunctionPrototypeAST> parse_external();
+  IdExpressionAST parse_external();
 
   void handle_function_definition();
   void handle_extern();
@@ -183,8 +176,7 @@ struct ParserAST {
   std::unique_ptr<llvm::LLVMContext> llvm_context_;
   std::unique_ptr<llvm::IRBuilder<>> llvm_IR_builder_;
   std::unique_ptr<llvm::Module> llvm_module_;
-  std::map<std::string, std::unique_ptr<FunctionPrototypeAST>>
-      function_prototypes_;
+  std::map<std::string, IdExpressionAST> function_prototypes_;
 
   std::unique_ptr<llvm::FunctionPassManager> function_pass_manager_;
   std::unique_ptr<llvm::LoopAnalysisManager> loop_analysis_manager_;
