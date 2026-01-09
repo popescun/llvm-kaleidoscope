@@ -75,7 +75,7 @@ def mandelconverge(real, imag)
 #    : putch(10)
 #  );
 
-def mandelhelp(xmin, xmax, xstep, ymin, ymax, ystep)
+#def mandelhelp(xmin, xmax, xstep, ymin, ymax, ystep)
   for y = ymin, y < ymax, ystep {
     for x = xmin, x < xmax, xstep {
       printdensity(mandelconverge(x,y));
