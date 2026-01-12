@@ -7,3 +7,6 @@
 - follow Google C++ coding guideline
 - use visitor for generating IR code
 - use comma separated argument list in function prototypes and calls
+- AST expression tree is stored in a map
+- changed body delimiters in `for .. in <body> ;` to braces `{..}`    
+- fixed for-loop that behaved like do..while     
