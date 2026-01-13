@@ -68,8 +68,9 @@ IRCodeGenerator::operator()(const VariableExpressionAST &expression) const {
   // look this variable up in a function block
   auto *variable = variable_names[expression.name_];
   if (!variable) {
-    log_error("unknown variable name", parser_ast_.lexer_.row_,
-              parser_ast_.lexer_.col_);
+    log_error(
+        std::string("unknown variable name: ").append(expression.name_).c_str(),
+        parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
     return {};
   }
   // load the value
@@ -562,8 +563,10 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   // body code and counter iteration will be inserted in loop after block
   parser_ast_.llvm_IR_builder_->SetInsertPoint(body_block);
 
-  if (!GENERATE_IR_CODE(expression.body_)) {
-    return {};
+  for (const auto &id : expression.body_) {
+    if (!GENERATE_IR_CODE(id)) {
+      return {};
+    }
   }
 
   // emit step value

@@ -186,7 +186,7 @@ struct IfExpressionAST : public ExpressionAST {
 struct ForExpressionAST : public ExpressionAST {
   ForExpressionAST(ParserAST &parser_ast, std::string variable_name,
                    IdExpressionAST start, IdExpressionAST end,
-                   IdExpressionAST step, IdExpressionAST body);
+                   IdExpressionAST step, std::vector<IdExpressionAST> body);
 
   llvm::Value *generate_IR_code() override;
 
@@ -194,7 +194,8 @@ struct ForExpressionAST : public ExpressionAST {
   std::string variable_name_;
   // start_ is variable value,
   // end_ is condition expression
-  IdExpressionAST start_, end_, step_, body_;
+  IdExpressionAST start_, end_, step_;
+  const std::vector<IdExpressionAST> body_;
 };
 
 struct ExpressionASTMap {

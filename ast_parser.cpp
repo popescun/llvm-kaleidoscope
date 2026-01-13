@@ -234,7 +234,8 @@ IdExpressionAST ParserAST::parse_unary_expression() {
           Lexer::to_token(ReservedToken::token_leading_parenthesis) ||
       // todo: checking comma token might be wrong as it is used in function
       // todo: prototype as well?
-      lexer_.current_token_ == Lexer::to_token(ReservedToken::token_comma)) {
+      lexer_.current_token_ == Lexer::to_token(ReservedToken::token_comma) ||
+      lexer_.current_token_ == Lexer::to_token(ReservedToken::token_new_line)) {
     return parse_primary_expression();
   }
 
@@ -517,13 +518,19 @@ IdExpressionAST ParserAST::parse_for_expression() {
   // eat `{`
   lexer_.next_token();
 
-  const auto body_expression = parse_expression();
-  if (body_expression == InvalidIdExpressionAST) {
-    return InvalidIdExpressionAST;
-  }
+  std::vector<IdExpressionAST> body_expression;
+  while (lexer_.current_token_ !=
+         Lexer::to_token(ReservedToken::token_trailing_brace)) {
+    const auto expression = parse_expression();
+    if (expression == InvalidIdExpressionAST) {
+      return InvalidIdExpressionAST;
+    }
 
-  // eat `;`
-  lexer_.next_token();
+    body_expression.emplace_back(expression);
+
+    // eat `;`
+    lexer_.next_token();
+  }
 
   if (lexer_.current_token_ !=
       Lexer::to_token(ReservedToken::token_trailing_brace)) {
@@ -534,7 +541,7 @@ IdExpressionAST ParserAST::parse_for_expression() {
 
   auto expression = std::make_unique<ForExpressionAST>(
       *this, std::move(variable_name), start_expression, end_expression,
-      step_expression, body_expression);
+      step_expression, std::move(body_expression));
 
   return STORE_EXPRESSION_IN_MAP(expression);
 }

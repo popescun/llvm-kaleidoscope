@@ -13,8 +13,8 @@
 namespace toy {
 
 Lexer::Lexer() {
-  file_ = std::ifstream{"library.toy"};
-  // file_ = std::ifstream{"library_test.toy"};
+  // file_ = std::ifstream{"library.toy"};
+  file_ = std::ifstream{"library_test.toy"};
   if (!file_.is_open()) {
     log_error("file library.toy not found", -1, 0);
   }
@@ -45,6 +45,10 @@ void Lexer::next_token() {
     }
     return c;
   };
+
+  if (next_token_ == to_token(ReservedToken::token_new_line)) {
+    next_token_ = get_char();
+  }
 
   // skip any whitespace
   while (isspace(next_token_)) {
@@ -148,7 +152,9 @@ void Lexer::next_token() {
 
     if (next_token_ != to_token(ReservedToken::token_eof)) {
       current_token_ = next_token_;
-      return;
+      next_token_ = get_char();
+      // continue until first util token and return
+      return next_token();
     }
   }
 

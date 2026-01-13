@@ -161,9 +161,10 @@ Value *IfExpressionAST::generate_IR_code() {
 ForExpressionAST::ForExpressionAST(ParserAST &parser_ast,
                                    std::string variable_name,
                                    IdExpressionAST start, IdExpressionAST end,
-                                   IdExpressionAST step, IdExpressionAST body)
+                                   IdExpressionAST step,
+                                   std::vector<IdExpressionAST> body)
     : parser_ast_{parser_ast}, variable_name_{std::move(variable_name)},
-      start_{start}, end_{end}, step_{step}, body_{body} {
+      start_{start}, end_{end}, step_{step}, body_{std::move(body)} {
   type_ = ExpressionTypeAST::ForExpressionAST;
 }
 
