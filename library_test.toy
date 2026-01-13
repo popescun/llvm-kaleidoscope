@@ -1,0 +1,19 @@
+extern putch(x);
+
+# for with multiple instructions and comment
+def foo(x)
+  for i = 1, i < x, 1.0  {
+    putch(42); # first instruction
+    putch(43);
+#   putch(43);
+  };
+
+
+# nested for, multiple nested expressions
+def foo1(x)
+  for i = 1, i < x , 1.0 {
+    for j = 1, j < x, 1.0  {
+      putch(42);
+    }
+    putch(43);
+  };
