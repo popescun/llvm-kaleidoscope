@@ -13,8 +13,8 @@
 namespace toy {
 
 Lexer::Lexer() {
-  // file_ = std::ifstream{"library.toy"};
-  file_ = std::ifstream{"library_test.toy"};
+  file_ = std::ifstream{"library.toy"};
+  // file_ = std::ifstream{"library_test.toy"};
   if (!file_.is_open()) {
     log_error("file library.toy not found", -1, 0);
   }
