@@ -455,7 +455,7 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
 }
 
 /**
- * Output for-oop as:
+ * Output for-loop as:
  * entry:
  *   var =  alloca double
  *   start =  startexpr
