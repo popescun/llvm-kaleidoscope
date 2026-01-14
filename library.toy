@@ -78,7 +78,7 @@ def mandelconverge(real, imag)
 def mandelhelp(xmin, xmax, xstep, ymin, ymax, ystep)
   for y = ymin, y < ymax, ystep {
     for x = xmin, x < xmax, xstep {
-       printdensity(1);
+      printdensity(mandelconverge(x,y));
     }
     putch(10);
   }
@@ -89,20 +89,4 @@ def mandel(realstart, imagstart, realmag, imagmag)
   mandelhelp(realstart, realstart+realmag*78, realmag,
              imagstart, imagstart+imagmag*40, imagmag);
 
-#mandel(-2.3, -1.3, 0.05, 0.07);
-
-def foo(x)
-  for i = 1, i < x, 1 {
-    for j = 1, j < x, 1 {
-      putch(42);
-    }
-  };
-
-def foo1(x)
-  for i = 1, i < x, 1.0  {
-    putch(42);
-  };
-
-def test(x)
-  if x < 5 then
-    putch(42);
+mandel(-2.3, -1.3, 0.05, 0.07);

@@ -536,13 +536,6 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   end_condition = parser_ast_.llvm_IR_builder_->CreateFPToUI(
       end_condition, Type::getInt1Ty(*parser_ast_.llvm_context_), "loopcond");
 
-  // restore the unshadowed variable
-  if (old_value) {
-    variable_names[expression.variable_name_] = old_value;
-  } else {
-    variable_names.erase(expression.variable_name_);
-  }
-
   // create the block for the boyd and increasing the counter ("body"), and
   // insert it
   BasicBlock *body_block =
@@ -567,6 +560,13 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
     if (!GENERATE_IR_CODE(id)) {
       return {};
     }
+  }
+
+  // restore the unshadowed variable
+  if (old_value) {
+    variable_names[expression.variable_name_] = old_value;
+  } else {
+    variable_names.erase(expression.variable_name_);
   }
 
   // emit step value
