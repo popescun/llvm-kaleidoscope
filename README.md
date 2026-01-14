@@ -9,4 +9,13 @@
 - use comma separated argument list in function prototypes and calls
 - AST expression tree is stored in a map
 - changed body delimiters in `for .. in <body> ;` to braces `{..}`    
-- fixed for-loop that behaved like do..while     
+- fixed for-loop that behaved like do..while, now following expression is a legit one:
+```cpp
+  def mandelhelp(xmin, xmax, xstep, ymin, ymax, ystep)
+    for y = ymin, y < ymax, ystep {
+      for x = xmin, x < xmax, xstep {
+        printdensity(mandelconverge(x,y));
+      }
+      putch(10);
+    }
+```
