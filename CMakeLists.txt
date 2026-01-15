@@ -73,6 +73,16 @@ llvm_map_components_to_libnames(llvm_libs
   asmprinter
   selectiondag
   debuginfocodeview
+  armasmparser
+  armcodegen
+  arminfo
+  armdesc
+  armutils
+  x86asmparser
+  x86codegen
+  x86info
+  x86desc
+  mcdisassembler
 )
 
 #include(/opt/homebrew/Cellar/llvm@18/18.1.8/lib/cmake/llvm/LLVMConfig.cmake)
@@ -92,6 +102,7 @@ endif ()
 
 file(GLOB headers *.hpp)
 file(GLOB cpp_files *.cpp)
+
 add_executable(${PROJECT_NAME}
   ${headers}
   ${cpp_files}
@@ -106,3 +117,5 @@ target_link_libraries(${PROJECT_NAME}
 
 add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
   COMMAND cp ${CMAKE_SOURCE_DIR}/*.toy ${CMAKE_CURRENT_BINARY_DIR})
+
+add_subdirectory(test)

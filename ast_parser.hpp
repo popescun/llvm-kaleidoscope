@@ -35,11 +35,20 @@ struct Jit;
  */
 struct ParserAST {
   /**
-   * Constructor.
+   * Default constructor;
    */
-  explicit ParserAST(Jit &jit);
+  explicit ParserAST();
 
-  void init();
+  /**
+   * Constructor with Jit.
+   */
+  explicit ParserAST(Jit *jit);
+
+  void init_common();
+
+  void init_jit();
+
+  void compile();
 
   /**
    * Parse a number expression with syntax:
@@ -186,7 +195,7 @@ struct ParserAST {
   std::unique_ptr<llvm::PassInstrumentationCallbacks>
       pass_instrumentation_callbacks_;
   std::unique_ptr<llvm::StandardInstrumentations> standard_instrumentations_;
-  Jit &jit_;
+  Jit *jit_;
 };
 
 } // namespace toy

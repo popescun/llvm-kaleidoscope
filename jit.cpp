@@ -32,7 +32,7 @@ Jit::Jit(std::unique_ptr<ExecutionSession> execution_session,
                         std::make_unique<ConcurrentIRCompiler>(
                             std::move(jit_target_machine_builder))},
       jit_dylib_{execution_session_->createBareJITDylib("<main>")},
-      parser_ast_{std::make_unique<ParserAST>(*this)} {
+      parser_ast_{std::make_unique<ParserAST>(this)} {
   jit_dylib_.addGenerator(
       cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
           data_layout_.getGlobalPrefix())));
@@ -52,6 +52,7 @@ Jit::~Jit() {
 void Jit::run() const { parser_ast_->run(); }
 
 std::unique_ptr<Jit> Jit::create() {
+  // initialize llvm for native(default) target
   InitializeNativeTarget();
   InitializeNativeTargetAsmPrinter();
   InitializeNativeTargetAsmParser();

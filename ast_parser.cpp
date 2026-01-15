@@ -3,6 +3,7 @@
 //
 
 #include <functional>
+#include <iostream>
 
 #include "ast_expressions.hpp"
 #include "jit.hpp"
@@ -11,7 +12,13 @@
 #include <utility>
 #include <vector>
 
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/TargetParser/Host.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar/GVN.h>
 #include <llvm/Transforms/Scalar/Reassociate.h>
@@ -38,15 +45,26 @@ using Token = Token;
 
 // ParserAST definition
 
-ParserAST::ParserAST(Jit &jit) : jit_{jit} { init(); }
+ParserAST::ParserAST(Jit *jit) : jit_{jit} {
+  init_common();
+  init_jit();
+}
 
-void ParserAST::init() {
+ParserAST::ParserAST() : jit_{nullptr} {
+  init_common();
+  run();
+}
+
+void ParserAST::init_common() {
   llvm_context_ = std::make_unique<LLVMContext>();
   llvm_module_ =
-      std::make_unique<Module>(std::string("ToyJIT"), *llvm_context_);
-  llvm_module_->setDataLayout(jit_.data_layout_);
-
+      std::make_unique<Module>(std::string("ToyModule"), *llvm_context_);
   llvm_IR_builder_ = std::make_unique<IRBuilder<>>(*llvm_context_);
+}
+
+void ParserAST::init_jit() {
+  assert(jit_);
+  llvm_module_->setDataLayout(jit_->data_layout_);
 
   function_pass_manager_ = std::make_unique<FunctionPassManager>();
   loop_analysis_manager_ = std::make_unique<LoopAnalysisManager>();
@@ -78,6 +96,63 @@ void ParserAST::init() {
   pass_builder.crossRegisterProxies(
       *loop_analysis_manager_, *function_analysis_manager_,
       *cgscc_analysis_manager_, *module_analysis_manager_);
+}
+
+void ParserAST::compile() {
+  // initialize llvm for all targets
+  InitializeAllTargetInfos();
+  InitializeAllTargets();
+  InitializeAllTargetMCs();
+  InitializeAllAsmParsers();
+  InitializeAllAsmPrinters();
+
+  assert(jit_ == nullptr);
+  auto target_triple = sys::getDefaultTargetTriple();
+  // outs() << "target:" << target_triple << "\n";
+
+  const Triple triple{std::move(target_triple)};
+  std::string error;
+  const auto target = TargetRegistry::lookupTarget(triple, error);
+
+  // Print an error and exit if we couldn't find the requested target.
+  // This generally occurs if we've forgotten to initialise the
+  // TargetRegistry or we have a bogus target triple.
+  if (!target) {
+    errs() << error;
+    return;
+  }
+
+  constexpr auto cpu = "generic";
+  constexpr auto features = "";
+
+  TargetOptions options;
+  auto target_machine =
+      target->createTargetMachine(triple, cpu, features, options, Reloc::PIC_);
+
+  llvm_module_->setDataLayout(target_machine->createDataLayout());
+  llvm_module_->setTargetTriple(triple);
+
+  constexpr auto file_name = "output.o";
+  std::error_code ec;
+  raw_fd_ostream destination{file_name, ec, sys::fs::OpenFlags::OF_None};
+  if (ec) {
+    errs() << "could not open output file: " << ec.message();
+    return;
+  }
+
+  legacy::PassManager pass_manager;
+  auto file_type = CodeGenFileType::ObjectFile;
+
+  if (target_machine->addPassesToEmitFile(pass_manager, destination, nullptr,
+                                          file_type)) {
+    errs() << "The target machine can't emit a file of this type";
+    return;
+  }
+
+  pass_manager.run(*llvm_module_);
+  destination.flush();
+
+  outs() << "Wrote " << file_name << "\n";
 }
 
 IdExpressionAST ParserAST::parse_number_expression() {
@@ -636,24 +711,22 @@ void ParserAST::handle_function_definition() {
       ir_code->print(errs());
       fprintf(stderr, "\n");
 
-      // warning, this is an expected error:
-      //   In ToyJIT, duplicate definition of symbol '_test'
-      // see
-      // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl04.html
-      // :
-      //   "Duplication of symbols in separate modules is not allowed since
-      //   LLVM-9"
-      // ExitOnErr(jit_.addModule(
-      //     ThreadSafeModule(std::move(llvm_module_),
-      //     std::move(llvm_context_)), resource_tracker));
+      if (jit_) {
+        // warning, this is an expected error:
+        //   In ToyJIT, duplicate definition of symbol '_test'
+        // see
+        // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl04.html
+        // :
+        //   "Duplication of symbols in separate modules is not allowed since
+        //   LLVM-9"
+        // ExitOnErr(jit_.addModule(
+        //     ThreadSafeModule(std::move(llvm_module_),
+        //     std::move(llvm_context_)), resource_tracker));
 
-      (void)add_module();
+        (void)add_module();
+      }
     }
   }
-  // else {
-  //   // skip token for error recovery
-  //   lexer_.next_token();
-  // }
 }
 
 void ParserAST::handle_extern() {
@@ -693,25 +766,28 @@ void ParserAST::handle_top_level_expression() {
       ir_code->print(errs());
       fprintf(stderr, "\n");
 
-      const auto resource_tracker = add_module();
+      if (jit_) {
+        const auto resource_tracker = add_module();
 
-      // search the Jit for __anon_expr symbol
-      auto expected_symbol = jit_.lookup(kAnonymousExpression);
-      if (!expected_symbol) {
-        log_error("anonymous symbol not found", lexer_.row_, lexer_.col_);
-        auto expected_error = expected_symbol.takeError();
-        log_error(toString(std::move(expected_error)).c_str(), lexer_.row_,
-                  lexer_.col_);
-      } else {
-        // get the symbol's address and cast it to the right type (takes no
-        // arguments, returns a double) so we can call it as a native function.
-        double (*function_pointer)() =
-            expected_symbol->getAddress().toPtr<double (*)()>();
-        fprintf(stderr, "evaluated to %f\n", function_pointer());
+        // search the Jit for __anon_expr symbol
+        auto expected_symbol = jit_->lookup(kAnonymousExpression);
+        if (!expected_symbol) {
+          log_error("anonymous symbol not found", lexer_.row_, lexer_.col_);
+          auto expected_error = expected_symbol.takeError();
+          log_error(toString(std::move(expected_error)).c_str(), lexer_.row_,
+                    lexer_.col_);
+        } else {
+          // get the symbol's address and cast it to the right type (takes no
+          // arguments, returns a double) so we can call it as a native
+          // function.
+          double (*function_pointer)() =
+              expected_symbol->getAddress().toPtr<double (*)()>();
+          fprintf(stderr, "evaluated to %f\n", function_pointer());
+        }
+
+        // delete the module containing anonymous expression from Jit
+        ExitOnErr(resource_tracker->remove());
       }
-
-      // delete the module containing anonymous expression from Jit
-      ExitOnErr(resource_tracker->remove());
     }
   } else {
     // skip token for error recovery
@@ -720,9 +796,10 @@ void ParserAST::handle_top_level_expression() {
 }
 
 ResourceTrackerSP ParserAST::add_module() {
+  assert(jit_);
   // create a `ResourceTracker` to track JIT'd memory allocated to our
   // anonymous expression, that way we can free it after executing.
-  const auto resource_tracker = jit_.jit_dylib_.createResourceTracker();
+  const auto resource_tracker = jit_->jit_dylib_.createResourceTracker();
   auto thread_safe_module =
       ThreadSafeModule(std::move(llvm_module_), std::move(llvm_context_));
 
@@ -732,7 +809,8 @@ ResourceTrackerSP ParserAST::add_module() {
   // logical containers (e.g. language modules(e.g a struct that represents code
   // in a file), structs, globals(e.g. a unique struct per process that contains
   // global symbols))
-  auto error = jit_.add_module(std::move(thread_safe_module), resource_tracker);
+  auto error =
+      jit_->add_module(std::move(thread_safe_module), resource_tracker);
   if (error) {
     log_error("failed to add module", lexer_.row_, lexer_.col_);
     log_error(toString(std::move(error)).c_str(), lexer_.row_, lexer_.col_);
@@ -740,7 +818,8 @@ ResourceTrackerSP ParserAST::add_module() {
 
   // llvm module once added it cannot be modified, so it's safe to
   // re-initialize
-  init();
+  init_common();
+  init_jit();
 
   return resource_tracker;
 }

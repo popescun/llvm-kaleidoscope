@@ -19,3 +19,12 @@
       putch(10);
     }
 ```
+- `toy` compiler executable can run in two modes
+  - `JIT` mode. Just run it without any cli options.
+  - `compilation` mode. Run it as:
+    ```bash
+    ./toy compile
+    ```
+    This will run the main loop where code can be generated.
+    On `toy>exit` all generated code is dumped to `output.o` object file.
+    In `test/test_linking` there's an example how the object file is linked to the main program.
