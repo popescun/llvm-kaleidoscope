@@ -2,12 +2,23 @@
 #include <iostream>
 
 extern "C" {
-  double average(double, double);
+double mandel(double, double, double, double);
 }
 
-// todo: extern functions are not found by expected name in
-// todo: the object file, so the linking is failing
+// extern functions, like `putch`, need to be exported from this application
+// runtime
+#ifdef _WIN32
+#define DLLEXPORT __declspec(dllexport)
+#else
+#define DLLEXPORT
+#endif
+
+extern "C" DLLEXPORT double putch(double x) {
+  fputc(static_cast<char>(x), stderr);
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
-  std::cout << "average " << average(3.0, 4.0) << std::endl;
+  mandel(-2.3, -1.3, 0.05, 0.07);
   return 0;
 }
