@@ -545,11 +545,8 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   BasicBlock *loop_after_block = BasicBlock::Create(
       *parser_ast_.llvm_context_, "afterloop", parent_function);
 
-  // insert the condition branch into the end of loop end block
-  // todo: this behaves like do..while loop as the condition is at the end of
-  // todo: the loop block, whereas normally the for loop check the condition
-  // todo: first. I guess we need to handle it like in if..then where the
-  // todo: condition is checked first.
+  // insert the condition branch into the end of loop end block:  on true it
+  // goes to the body block, on false it goes to the exit block.
   parser_ast_.llvm_IR_builder_->CreateCondBr(end_condition, body_block,
                                              loop_after_block);
 
@@ -586,6 +583,8 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
 
   parser_ast_.llvm_IR_builder_->CreateStore(next_variable, alloca);
 
+  // insert again the condition branch into the end of body block: on true it
+  // goes to the loop block, on false it goes to the exit block
   parser_ast_.llvm_IR_builder_->CreateCondBr(end_condition, loop_block,
                                              loop_after_block);
 
