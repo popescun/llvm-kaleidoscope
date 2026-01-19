@@ -14,9 +14,9 @@ namespace toy {
 
 Lexer::Lexer() {
   // this is the main library, written in `toy` language
-  file_ = std::ifstream{"library.toy"};
+  // file_ = std::ifstream{"library.toy"};
   // this is for testing new features, disable it on submitting new changes
-  // file_ = std::ifstream{"library_test.toy"};
+  file_ = std::ifstream{"library_test.toy"};
   if (!file_.is_open()) {
     log_error("file library.toy not found\n", -1, 0);
   }

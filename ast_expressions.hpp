@@ -173,14 +173,15 @@ struct FunctionDefinitionAST : ExpressionAST {
 
 struct IfExpressionAST : public ExpressionAST {
   IfExpressionAST(ParserAST &parser_ast, IdExpressionAST _if,
-                  IdExpressionAST _then, IdExpressionAST _else);
+                  std::vector<IdExpressionAST> _then,
+                  std::vector<IdExpressionAST> _else);
 
   llvm::Value *generate_IR_code() override;
 
   ParserAST &parser_ast_;
   IdExpressionAST if_;
-  IdExpressionAST then_;
-  IdExpressionAST else_;
+  const std::vector<IdExpressionAST> then_;
+  const std::vector<IdExpressionAST> else_;
 };
 
 struct ForExpressionAST : public ExpressionAST {

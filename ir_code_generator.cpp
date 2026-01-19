@@ -410,9 +410,11 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
 
   // codegen `then` value
   parser_ast_.llvm_IR_builder_->SetInsertPoint(then_block);
-  Value *then_value = GENERATE_IR_CODE(expression.then_);
-  if (!then_value) {
-    return {};
+  Value *then_value{nullptr};
+  for (const auto &id : expression.then_) {
+    if (then_value = GENERATE_IR_CODE(id); !then_value) {
+      return {};
+    }
   }
 
   BasicBlock *merge_block =
@@ -429,12 +431,12 @@ Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
   // workaround for nop instruction for else block if `else` expression  is
   // missing
   Value *else_value = ConstantFP::get(*parser_ast_.llvm_context_, APFloat(0.0));
-  if (expression.else_ != InvalidIdExpressionAST) {
-    else_value = GENERATE_IR_CODE(expression.else_);
-    if (!else_value) {
+  for (const auto &id : expression.else_) {
+    if (else_value = GENERATE_IR_CODE(id); !else_value) {
       return {};
     }
   }
+
   parser_ast_.llvm_IR_builder_->CreateBr(merge_block);
   // codegen of `else` can change the current block, update else block for
   // PHI.

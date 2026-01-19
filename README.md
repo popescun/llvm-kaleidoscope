@@ -9,8 +9,8 @@
 - use comma separated argument list in function prototypes and calls
 - AST expression tree is stored in a map
 - can load source files written in `toy` language. Added `library.toy` file that contains user
-    defined operators discussed in [chpater 6](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl06.html),
-    including the `mandelbrot` example.
+    defined operators discussed in [chapter 6](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl06.html), including the `mandelbrot` example. There's one caveat,
+  source files should be terminated with one single empty line.
 - changed body delimiters in `for .. in <body> ;` to braces `{..}`    
 - fixed for-loop that behaved like `do..while` and allow multiple expressions in the body.
   Now following expression is a legit one:
@@ -34,3 +34,4 @@
       In `test/test_linking` there's an example how the object file is linked to the main program.
       Notice that extern functions used in toy program, like `putch`, need to be exported from the application runtime. 
       The `test_linking` shows this case.
+- if may comprise multiple expressions, semicolon separated 

@@ -500,33 +500,82 @@ IdExpressionAST ParserAST::parse_if_expression() {
     return InvalidIdExpressionAST;
   }
 
-  if (lexer_.current_token_ != Lexer::to_token(ReservedToken::token_then)) {
-    log_error("expected `then` expression in `if..then..else` expression",
+  if (lexer_.current_token_ !=
+      Lexer::to_token(ReservedToken::token_leading_brace)) {
+    log_error("expected `{` expression after condition in `if` expression",
               lexer_.row_, lexer_.col_);
     return InvalidIdExpressionAST;
   }
 
-  // eat `then`
+  // eat `{`
   lexer_.next_token();
 
-  const auto then_expression = parse_expression();
-  if (then_expression == InvalidIdExpressionAST) {
+  // then expression block may comprise multiple expressions, separated by `;`
+  std::vector<IdExpressionAST> then_expression;
+  while (lexer_.current_token_ !=
+         Lexer::to_token(ReservedToken::token_trailing_brace)) {
+    const auto expression = parse_expression();
+    if (expression == InvalidIdExpressionAST) {
+      return InvalidIdExpressionAST;
+    }
+
+    then_expression.emplace_back(expression);
+
+    // eat `;`
+    lexer_.next_token();
+  }
+
+  if (lexer_.current_token_ !=
+      Lexer::to_token(ReservedToken::token_trailing_brace)) {
+    log_error("expected `}` after `then` in `if` expression", lexer_.row_,
+              lexer_.col_);
     return InvalidIdExpressionAST;
   }
 
-  auto else_expression{InvalidIdExpressionAST};
+  // eat `}`
+  lexer_.next_token();
+
+  std::vector<IdExpressionAST> else_expression;
   if (lexer_.current_token_ == Lexer::to_token(ReservedToken::token_else)) {
     // eat `else`
     lexer_.next_token();
 
-    else_expression = parse_expression();
-    if (else_expression == InvalidIdExpressionAST) {
+    if (lexer_.current_token_ !=
+        Lexer::to_token(ReservedToken::token_leading_brace)) {
+      log_error("expected `{` expression after `else` in `if` expression",
+                lexer_.row_, lexer_.col_);
+      return InvalidIdExpressionAST;
+    }
+
+    // eat `{`
+    lexer_.next_token();
+
+    // else expression block may comprise multiple expressions, separated by `;`
+    while (lexer_.current_token_ !=
+           Lexer::to_token(ReservedToken::token_trailing_brace)) {
+      const auto expression = parse_expression();
+      if (expression == InvalidIdExpressionAST) {
+        return InvalidIdExpressionAST;
+      }
+
+      else_expression.emplace_back(expression);
+
+      // eat `;`
+      lexer_.next_token();
+    }
+
+    if (lexer_.current_token_ !=
+        Lexer::to_token(ReservedToken::token_trailing_brace)) {
+      log_error("expected `}` after `else` in `if` expression", lexer_.row_,
+                lexer_.col_);
       return InvalidIdExpressionAST;
     }
   }
 
   auto expression = std::make_unique<IfExpressionAST>(
-      *this, if_condition, then_expression, else_expression);
+      *this, if_condition, std::move(then_expression),
+      std::move(else_expression));
+
   return STORE_EXPRESSION_IN_MAP(expression);
 }
 

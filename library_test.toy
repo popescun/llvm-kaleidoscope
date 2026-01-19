@@ -17,3 +17,12 @@ def foo1(x)
     }
     putch(43);
   };
+
+def foo2(x)
+  if x < 3 {
+    putch(43);
+    putch(42);
+  } else {
+    putch(42);
+    putch(43);
+  };

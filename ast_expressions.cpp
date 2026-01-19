@@ -148,8 +148,10 @@ Value *FunctionDefinitionAST::generate_IR_code() {
 }
 
 IfExpressionAST::IfExpressionAST(ParserAST &parser_ast, IdExpressionAST _if,
-                                 IdExpressionAST _then, IdExpressionAST _else)
-    : parser_ast_{parser_ast}, if_{_if}, then_{_then}, else_{_else} {
+                                 std::vector<IdExpressionAST> _then,
+                                 std::vector<IdExpressionAST> _else)
+    : parser_ast_{parser_ast}, if_{_if}, then_{std::move(_then)},
+      else_{std::move(_else)} {
   type_ = ExpressionTypeAST::IfExpressionAST;
 }
 
