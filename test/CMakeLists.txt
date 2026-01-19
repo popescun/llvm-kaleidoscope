@@ -1,8 +1,10 @@
 
 project(test_linking)
 
-add_executable(${PROJECT_NAME}
-  ../build/output.o
-  test_linking_object.cpp
-)
+if(EXISTS "${CMAKE_BINARY_DIR}/output.o")
+  add_executable(${PROJECT_NAME}
+    ${CMAKE_BINARY_DIR}/output.o
+    test_linking_object.cpp
+  )
+endif ()
 
