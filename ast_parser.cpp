@@ -593,6 +593,7 @@ IdExpressionAST ParserAST::parse_for_expression() {
   // eat `{`
   lexer_.next_token();
 
+  // body may comprise multiple expressions, separated by `;`
   std::vector<IdExpressionAST> body_expression;
   while (lexer_.current_token_ !=
          Lexer::to_token(ReservedToken::token_trailing_brace)) {
