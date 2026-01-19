@@ -584,9 +584,11 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   parser_ast_.llvm_IR_builder_->CreateStore(next_variable, alloca);
 
   // insert again the condition branch into the end of body block: on true it
-  // goes to the loop block, on false it goes to the exit block
+  // goes back to the loop block, on false it goes to the exit block
   parser_ast_.llvm_IR_builder_->CreateCondBr(end_condition, loop_block,
                                              loop_after_block);
+  // this also work, but makes 2 jumps even the condition is already true
+  // parser_ast_.llvm_IR_builder_->CreateBr(loop_block);
 
   // return code will be inserted in loop after block
   parser_ast_.llvm_IR_builder_->SetInsertPoint(loop_after_block);
