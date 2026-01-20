@@ -6,8 +6,7 @@ def foo(x)
     putch(42); # first instruction
     putch(43);
 #   putch(43);
-  };
-
+  }
 
 # nested for, multiple nested expressions
 def foo1(x)
@@ -16,7 +15,7 @@ def foo1(x)
       putch(42);
     }
     putch(43);
-  };
+  }
 
 def foo2(x)
   if x < 3 {
@@ -25,4 +24,16 @@ def foo2(x)
   } else {
     putch(42);
     putch(43);
-  };
+  }
+
+# Binary logical or, which does not short circuit.
+def binary| 5 (lhs, rhs)
+  if lhs {
+    1;
+  } else {
+    if rhs {
+      1;
+    } else {
+      0;
+    }
+  }
