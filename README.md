@@ -42,4 +42,4 @@
     It first compiles `fib.toy` file written in `toy` language with debug information and then redirects the 
     console output(`ir` representation ) to clang, that finally compiles it and creates an executable (i.e. `a.out`
     on Unix like machines). The executable can be debugged using a debugger like `lldb`.
-- if may comprise multiple expressions, semicolon separated 
+- it can process multiple expressions, semicolon separated 
