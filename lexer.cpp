@@ -12,11 +12,18 @@
 
 namespace toy {
 
-Lexer::Lexer() {
+Lexer::Lexer(bool is_debug_mode) {
   // this is the main library, written in `toy` language
   file_ = std::ifstream{"library.toy"};
-  // this is for testing new features, disable it on submitting new changes
+
+  // these are for testing new features and debugging, disable them on
+  // submitting new changes
   // file_ = std::ifstream{"library_test.toy"};
+
+  if (is_debug_mode) {
+    file_ = std::ifstream{"fib.toy"};
+  }
+
   if (!file_.is_open()) {
     log_error("file library.toy not found\n", -1, 0);
   }
@@ -34,12 +41,13 @@ void Lexer::next_token() {
     auto c = static_cast<Token>(file_buffer ? file_buffer->sbumpc()
                                             : std::getchar());
     if (file_buffer && file_buffer->sgetc() == EOF) {
-      // c = EOF;
+      c = EOF;
       file_.close();
       file_buffer = nullptr;
     }
 
-    if (c == to_token(ReservedToken::token_new_line)) {
+    if (c == to_token(ReservedToken::token_new_line) ||
+        c == to_token(ReservedToken::token_carriage_return)) {
       col_ = 0;
       ++row_;
     } else {
@@ -163,13 +171,15 @@ void Lexer::next_token() {
   // check for end of file. Don't eat the EOF.
   if (next_token_ == static_cast<Token>(EOF)) {
     current_token_ = to_token(ReservedToken::token_eof);
+    // re-init to prepare for next token input on next `get_char`
+    next_token_ = to_token(ReservedToken::token_whitespace);
     return;
   }
 
-  if (next_token_ == to_token(ReservedToken::token_number)) {
-    ++row_;
-    col_ = 0;
-  }
+  // if (next_token_ == to_token(ReservedToken::token_number)) {
+  //   ++row_;
+  //   col_ = 0;
+  // }
 
   // otherwise, just return the character as its ascii value
   current_token_ = next_token_;

@@ -50,10 +50,7 @@ ParserAST::ParserAST(Jit *jit) : jit_{jit} {
   init_jit();
 }
 
-ParserAST::ParserAST() : jit_{nullptr} {
-  init_common();
-  run();
-}
+ParserAST::ParserAST() : jit_{nullptr} { init_common(); }
 
 void ParserAST::init_common() {
   llvm_context_ = std::make_unique<LLVMContext>();
@@ -98,7 +95,7 @@ void ParserAST::init_jit() {
       *cgscc_analysis_manager_, *module_analysis_manager_);
 }
 
-void ParserAST::compile() {
+ParserAST &ParserAST::compile() {
   // initialize llvm for all targets
   InitializeAllTargetInfos();
   InitializeAllTargets();
@@ -119,7 +116,7 @@ void ParserAST::compile() {
   // TargetRegistry or we have a bogus target triple.
   if (!target) {
     errs() << error;
-    return;
+    return *this;
   }
 
   constexpr auto cpu = "generic";
@@ -137,7 +134,7 @@ void ParserAST::compile() {
   raw_fd_ostream destination{file_name, ec, sys::fs::OpenFlags::OF_None};
   if (ec) {
     errs() << "could not open output file: " << ec.message();
-    return;
+    return *this;
   }
 
   legacy::PassManager pass_manager;
@@ -146,13 +143,42 @@ void ParserAST::compile() {
   if (target_machine->addPassesToEmitFile(pass_manager, destination, nullptr,
                                           file_type)) {
     errs() << "The target machine can't emit a file of this type";
-    return;
+    return *this;
   }
 
   pass_manager.run(*llvm_module_);
   destination.flush();
 
   outs() << "Wrote " << file_name << "\n";
+
+  return *this;
+}
+
+ParserAST &ParserAST::debug() {
+  lexer_ = Lexer{true};
+
+  // add the current debug infor version into the module
+  llvm_module_->addModuleFlag(Module::Warning, "Debug Info Version",
+                              DEBUG_METADATA_VERSION);
+
+  auto target_triple = sys::getDefaultTargetTriple();
+  // outs() << "target:" << target_triple << "\n";
+
+  const Triple triple{std::move(target_triple)};
+  // darwin only supports dwarf2
+  if (triple.isOSDarwin()) {
+    llvm_module_->addModuleFlag(Module::Warning, "Dwarf Version", 2);
+  }
+
+  // construct the DIBuilder
+  llvm_DI_builder_ = std::make_unique<DIBuilder>(*llvm_module_);
+
+  debug_info_ = std::make_unique<ParserAST::DebugInfo>(*this);
+  debug_info_->compile_unit_ = llvm_DI_builder_->createCompileUnit(
+      dwarf::DW_LANG_C, llvm_DI_builder_->createFile("fib.toy", "."),
+      "Kaleidoscope Compiler", false, "", 0);
+
+  return *this;
 }
 
 IdExpressionAST ParserAST::parse_number_expression() {
@@ -479,9 +505,11 @@ IdExpressionAST ParserAST::parse_function_definition() {
 IdExpressionAST ParserAST::parse_top_level_expression() {
   // parse function body expression
   if (auto body_id = parse_expression(); body_id != InvalidIdExpressionAST) {
-    // make a function prototype with anonymous name
+    // make a function prototype with anonymous name, or our "main"
+    // function in case we build with debug information
     auto prototype = std::make_unique<FunctionPrototypeAST>(
-        *this, kAnonymousExpression, std::vector<std::string>());
+        *this, !is_debug_mode() ? kAnonymousExpression : "main",
+        std::vector<std::string>());
     const auto prototype_id = STORE_EXPRESSION_IN_MAP(prototype);
     auto function =
         std::make_unique<FunctionDefinitionAST>(*this, prototype_id, body_id);
@@ -747,6 +775,7 @@ IdExpressionAST ParserAST::parse_external() {
 void ParserAST::handle_function_definition() {
   if (const auto function_definition_id = parse_function_definition()) {
     // todo: duplicate code, extract it to a function
+    // todo: move it to `generate_IR_code`
     // first, transfer ownership of the prototype to function prototypes map,
     // but keep a reference to it for use bellow
     const auto &expression = GET_EXPRESSION_FROM_MAP(function_definition_id);
@@ -757,23 +786,24 @@ void ParserAST::handle_function_definition() {
     function_prototypes_[function_definition->prototype_name_] =
         function_definition->prototype_;
     if (const auto *ir_code = function_definition->generate_IR_code()) {
-      fprintf(stderr, "parsed a function definition\n");
-      ir_code->print(errs());
-      fprintf(stderr, "\n");
+      if (!is_debug_mode()) {
+        fprintf(stderr, "parsed a function definition\n");
+        ir_code->print(errs());
+        fprintf(stderr, "\n");
+        if (jit_) {
+          // warning, this is an expected error:
+          //   In ToyJIT, duplicate definition of symbol '_test'
+          // see
+          // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl04.html
+          // :
+          //   "Duplication of symbols in separate modules is not allowed since
+          //   LLVM-9"
+          // ExitOnErr(jit_.addModule(
+          //     ThreadSafeModule(std::move(llvm_module_),
+          //     std::move(llvm_context_)), resource_tracker));
 
-      if (jit_) {
-        // warning, this is an expected error:
-        //   In ToyJIT, duplicate definition of symbol '_test'
-        // see
-        // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl04.html
-        // :
-        //   "Duplication of symbols in separate modules is not allowed since
-        //   LLVM-9"
-        // ExitOnErr(jit_.addModule(
-        //     ThreadSafeModule(std::move(llvm_module_),
-        //     std::move(llvm_context_)), resource_tracker));
-
-        (void)add_module();
+          (void)add_module();
+        }
       }
     }
   }
@@ -788,10 +818,13 @@ void ParserAST::handle_extern() {
         dynamic_cast<FunctionPrototypeAST *>(expression.get());
     assert(function_prototype);
     if (const auto *ir_code = function_prototype->generate_IR_code()) {
-      fprintf(stderr, "parsed an external function\n");
-      ir_code->print(errs());
-      fprintf(stderr, "\n");
-      function_prototypes_[function_prototype->name_] = function_prototype->id_;
+      if (!is_debug_mode()) {
+        fprintf(stderr, "parsed an external function\n");
+        ir_code->print(errs());
+        fprintf(stderr, "\n");
+        function_prototypes_[function_prototype->name_] =
+            function_prototype->id_;
+      }
     }
   } else {
     // skip token for error recovery
@@ -812,31 +845,33 @@ void ParserAST::handle_top_level_expression() {
     function_prototypes_[function_definition->prototype_name_] =
         function_definition->prototype_;
     if (const auto ir_code = function_definition->generate_IR_code()) {
-      fprintf(stderr, "parsed a top level expression\n");
-      ir_code->print(errs());
-      fprintf(stderr, "\n");
+      if (!is_debug_mode()) {
+        fprintf(stderr, "parsed a top level expression\n");
+        ir_code->print(errs());
+        fprintf(stderr, "\n");
 
-      if (jit_) {
-        const auto resource_tracker = add_module();
+        if (jit_) {
+          const auto resource_tracker = add_module();
 
-        // search the Jit for __anon_expr symbol
-        auto expected_symbol = jit_->lookup(kAnonymousExpression);
-        if (!expected_symbol) {
-          log_error("anonymous symbol not found", lexer_.row_, lexer_.col_);
-          auto expected_error = expected_symbol.takeError();
-          log_error(toString(std::move(expected_error)).c_str(), lexer_.row_,
-                    lexer_.col_);
-        } else {
-          // get the symbol's address and cast it to the right type (takes no
-          // arguments, returns a double) so we can call it as a native
-          // function.
-          double (*function_pointer)() =
-              expected_symbol->getAddress().toPtr<double (*)()>();
-          fprintf(stderr, "evaluated to %f\n", function_pointer());
+          // search the Jit for __anon_expr symbol
+          auto expected_symbol = jit_->lookup(kAnonymousExpression);
+          if (!expected_symbol) {
+            log_error("anonymous symbol not found", lexer_.row_, lexer_.col_);
+            auto expected_error = expected_symbol.takeError();
+            log_error(toString(std::move(expected_error)).c_str(), lexer_.row_,
+                      lexer_.col_);
+          } else {
+            // get the symbol's address and cast it to the right type (takes no
+            // arguments, returns a double) so we can call it as a native
+            // function.
+            double (*function_pointer)() =
+                expected_symbol->getAddress().toPtr<double (*)()>();
+            fprintf(stderr, "evaluated to %f\n", function_pointer());
+          }
+
+          // delete the module containing anonymous expression from Jit
+          ExitOnErr(resource_tracker->remove());
         }
-
-        // delete the module containing anonymous expression from Jit
-        ExitOnErr(resource_tracker->remove());
       }
     }
   } else {
@@ -874,25 +909,33 @@ ResourceTrackerSP ParserAST::add_module() {
   return resource_tracker;
 }
 
-void ParserAST::run() {
+bool ParserAST::is_debug_mode() const { return static_cast<bool>(debug_info_); }
+
+ParserAST &ParserAST::run() {
   // prime the first token
   if (!lexer_.file_.is_open()) {
-    fprintf(stderr, "toy> ");
+    if (!is_debug_mode()) {
+      fprintf(stderr, "toy> ");
+    }
   }
   lexer_.next_token();
 
   // top ::= definition | external | expression | ';'
-  while (true) {
+  bool should_run{true};
+  while (should_run) {
     switch (Lexer::to_reserved_token(lexer_.current_token_)) {
     case ReservedToken::token_eof:
-      fprintf(stderr, "toy> ");
+      if (is_debug_mode()) {
+        should_run = false;
+        break;
+      }
       lexer_.next_token();
       break;
     // ignore top-level semicolon
     case ReservedToken::token_semicolon:
     case ReservedToken::token_new_line:
     case ReservedToken::token_trailing_brace:
-      if (!lexer_.file_.is_open()) {
+      if (!lexer_.file_.is_open() && !is_debug_mode()) {
         fprintf(stderr, "toy> ");
       }
       // eat last token
@@ -909,14 +952,25 @@ void ParserAST::run() {
       handle_extern();
       break;
     case ReservedToken::token_exit:
-      fprintf(stderr, "dump module\n");
-      llvm_module_->dump();
-      return;
+      // fprintf(stderr, "dump module\n");
+      // llvm_module_->dump();
+      should_run = false;
+      break;
     default:
       handle_top_level_expression();
       break;
     }
   }
+
+  if (is_debug_mode()) {
+    // finalize the debug info
+    llvm_DI_builder_->finalize();
+
+    // print out all the generated code
+    llvm_module_->print(errs(), nullptr);
+  }
+
+  return *this;
 }
 
 } // namespace toy

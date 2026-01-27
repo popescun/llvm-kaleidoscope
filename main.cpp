@@ -14,7 +14,11 @@ int main(int argc, char *argv[]) {
     toy::Jit::create()->run();
   } else if (args[1] == "compile") {
     std::cout << "compile mode...\n";
-    toy::ParserAST().compile();
+    toy::ParserAST().run().compile();
+  } else if (args[1] == "debug") {
+    // std::cout << "debug mode...\n";
+    auto jit = toy::Jit::create();
+    jit->parser_ast_->debug().run();
   } else {
     throw std::runtime_error("Invalid argument(s)");
   }

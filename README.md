@@ -25,13 +25,21 @@
 ```
 - `toy` compiler executable can run in two modes
   - `JIT` mode. Just run it without any cli options.
-    - `compilation` mode. Run it as:
-      ```bash
-      ./toy compile
-      ```
-      This will run the main loop where code can be generated.
-      On `toy>exit` all generated code is dumped to `output.o` object file.
-      In `test/test_linking` there's an example how the object file is linked to the main program.
-      Notice that extern functions used in toy program, like `putch`, need to be exported from the application runtime. 
-      The `test_linking` shows this case.
+     In this mode the `library.toy` is loaded by default. 
+  - `compilation` mode:
+    ```bash
+    ./toy compile
+    ```
+    This will run the main loop where code can be generated.
+    On `toy>exit` all generated code is dumped to `output.o` object file.
+    In `test/test_linking` there's an example how the object file is linked to the main program.
+    Notice that extern functions used in toy program, like `putch`, need to be exported from the application runtime. 
+    The `test_linking` shows this case.
+  - `debug` mode:
+  ```bash
+    ./toy debug |& clang -x ir -
+  ```
+    It first compiles `fib.toy` file written in `toy` language with debug information and then redirects the 
+    console output(`ir` representation ) to clang, that finally compiles it and creates an executable (i.e. `a.out`
+    on Unix like machines). The executable can be debugged using a debugger like `lldb`.
 - if may comprise multiple expressions, semicolon separated 

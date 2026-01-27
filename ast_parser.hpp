@@ -11,6 +11,7 @@
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/ExecutionEngine/Orc/Core.h>
+#include <llvm/IR/DIBuilder.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -46,9 +47,26 @@ struct ParserAST {
 
   void init_common();
 
+  /**
+   * Initialize llvm for running as JIT engine.
+   */
   void init_jit();
 
-  void compile();
+  /**
+   * Handle input expressions with syntax:
+   *  top ::= definition | external | expression | ';'
+   */
+  ParserAST &run();
+
+  /**
+   * Initialize llvm to compile the code to an object file.
+   */
+  ParserAST &compile();
+
+  /**
+   * Initialize llvm to create a debugging executable.
+   */
+  ParserAST &debug();
 
   /**
    * Parse a number expression with syntax:
@@ -174,15 +192,11 @@ struct ParserAST {
   void handle_extern();
   void handle_top_level_expression();
   llvm::orc::ResourceTrackerSP add_module();
-
-  /**
-   * Handle input expressions with syntax:
-   *  top ::= definition | external | expression | ';'
-   */
-  void run();
+  bool is_debug_mode() const;
 
   Lexer lexer_;
   std::unique_ptr<llvm::LLVMContext> llvm_context_;
+  std::unique_ptr<llvm::DIBuilder> llvm_DI_builder_;
   std::unique_ptr<llvm::IRBuilder<>> llvm_IR_builder_;
   std::unique_ptr<llvm::Module> llvm_module_;
   std::map<std::string, IdExpressionAST> function_prototypes_;
@@ -196,6 +210,54 @@ struct ParserAST {
       pass_instrumentation_callbacks_;
   std::unique_ptr<llvm::StandardInstrumentations> standard_instrumentations_;
   Jit *jit_;
+
+  struct DebugInfo {
+    llvm::DICompileUnit *compile_unit_{nullptr};
+    llvm::DIType *double_type_{nullptr};
+    ParserAST &parser_ast_;
+    std::vector<llvm::DIScope *> lexical_blocks_;
+
+    explicit DebugInfo(ParserAST &parser_ast) : parser_ast_{parser_ast} {}
+
+    llvm::DIType *get_double_type() {
+      if (double_type_) {
+        return double_type_;
+      }
+      double_type_ = parser_ast_.llvm_DI_builder_->createBasicType(
+          "double", 64, llvm::dwarf::DW_ATE_float);
+      return double_type_;
+    }
+
+    void emit_location(ExpressionAST *expression) const {
+      if (!expression) {
+        return parser_ast_.llvm_IR_builder_->SetCurrentDebugLocation(
+            llvm::DebugLoc{});
+      }
+      llvm::DIScope *di_scope =
+          lexical_blocks_.empty() ? compile_unit_ : lexical_blocks_.back();
+      parser_ast_.llvm_IR_builder_->SetCurrentDebugLocation(
+          llvm::DILocation::get(di_scope->getContext(), expression->get_line(),
+                                expression->get_col(), di_scope));
+    }
+
+    llvm::DISubroutineType *create_function_type(unsigned args_no) {
+      llvm::SmallVector<llvm::Metadata *, 8> elt_tys;
+      llvm::DIType *double_type = get_double_type();
+
+      // add the result type
+      elt_tys.push_back(double_type);
+
+      // add the arguments type
+      for (unsigned i = 0; i < args_no; ++i) {
+        elt_tys.push_back(double_type);
+      }
+
+      return parser_ast_.llvm_DI_builder_->createSubroutineType(
+          parser_ast_.llvm_DI_builder_->getOrCreateTypeArray(elt_tys));
+    }
+  };
+
+  std::unique_ptr<DebugInfo> debug_info_;
 };
 
 } // namespace toy

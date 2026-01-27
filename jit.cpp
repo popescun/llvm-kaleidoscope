@@ -49,7 +49,7 @@ Jit::~Jit() {
   }
 }
 
-void Jit::run() const { parser_ast_->run(); }
+void Jit::run() const { (void)parser_ast_->run(); }
 
 std::unique_ptr<Jit> Jit::create() {
   // initialize llvm for native(default) target

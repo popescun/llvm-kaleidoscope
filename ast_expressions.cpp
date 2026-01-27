@@ -25,10 +25,21 @@ auto next_expression_id() {
 using namespace llvm;
 using namespace llvm::orc;
 
-ExpressionAST::ExpressionAST() : id_{next_expression_id()} {}
+ExpressionAST::ExpressionAST(ParserAST &parser_ast)
+    : id_{next_expression_id()}, parser_ast_{parser_ast} {}
+
+std::uint32_t ExpressionAST::get_line() const {
+  return parser_ast_.lexer_.row_;
+}
+
+std::uint32_t ExpressionAST::get_col() const { return parser_ast_.lexer_.col_; }
+
+raw_ostream &ExpressionAST::dump(raw_ostream &out, int index) const {
+  return out << ':' << get_line() << ':' << get_col() << '\n';
+}
 
 NumberExpressionAST::NumberExpressionAST(ParserAST &parser_ast, double value)
-    : parser_ast_{parser_ast}, value_{value} {
+    : ExpressionAST{parser_ast}, value_{value} {
   type_ = ExpressionTypeAST::NumberExpressionAST;
 }
 
@@ -38,7 +49,7 @@ Value *NumberExpressionAST::generate_IR_code() {
 
 VariableExpressionAST::VariableExpressionAST(ParserAST &parser_ast,
                                              std::string name)
-    : parser_ast_{parser_ast}, name_{std::move(name)} {
+    : ExpressionAST{parser_ast}, name_{std::move(name)} {
   type_ = ExpressionTypeAST::VariableExpressionAST;
 }
 
@@ -50,7 +61,7 @@ VarExpressionAST::VarExpressionAST(
     ParserAST &parser_ast,
     std::vector<std::pair<std::string, IdExpressionAST>> variables,
     IdExpressionAST body)
-    : parser_ast_(parser_ast), variables_(std::move(variables)), body_(body) {
+    : ExpressionAST(parser_ast), variables_(std::move(variables)), body_(body) {
   type_ = ExpressionTypeAST::VariableExpressionAST;
 }
 
@@ -62,7 +73,7 @@ Value *VarExpressionAST::generate_IR_code() {
 BinaryExpressionAST::BinaryExpressionAST(ParserAST &parser_ast, Token op,
                                          IdExpressionAST lhs,
                                          IdExpressionAST rhs)
-    : parser_ast_{parser_ast}, operator_{op}, lhs_{lhs}, rhs_{rhs} {
+    : ExpressionAST{parser_ast}, operator_{op}, lhs_{lhs}, rhs_{rhs} {
   type_ = ExpressionTypeAST::BinaryExpressionAST;
 }
 
@@ -76,7 +87,7 @@ Value *BinaryExpressionAST::generate_IR_code() {
 UnaryExpressionAST::UnaryExpressionAST(ParserAST &parser_ast,
                                        std::uint8_t operation_code,
                                        IdExpressionAST operand)
-    : parser_ast_{parser_ast}, operation_code_{operation_code},
+    : ExpressionAST{parser_ast}, operation_code_{operation_code},
       operand_{operand} {
   type_ = ExpressionTypeAST::UnaryExpressionAST;
 }
@@ -88,7 +99,7 @@ Value *UnaryExpressionAST::generate_IR_code() {
 
 CallExpressionAST::CallExpressionAST(ParserAST &parser_ast, std::string callee,
                                      std::vector<IdExpressionAST> arguments)
-    : parser_ast_{parser_ast}, callee_{std::move(callee)},
+    : ExpressionAST{parser_ast}, callee_{std::move(callee)},
       arguments_{std::move(arguments)} {
   type_ = ExpressionTypeAST::CallExpressionAST;
 }
@@ -102,7 +113,7 @@ FunctionPrototypeAST::FunctionPrototypeAST(
     ParserAST &parser_ast, std::string name,
     std::vector<std::string> arguments_names, bool is_operator,
     std::uint8_t binary_operator_precedence)
-    : parser_ast_{parser_ast}, name_{std::move(name)},
+    : ExpressionAST{parser_ast}, name_{std::move(name)},
       arguments_names_{std::move(arguments_names)}, is_operator_{is_operator},
       binary_operator_precedence_{binary_operator_precedence} {
   type_ = ExpressionTypeAST::FunctionPrototypeAST;
@@ -132,7 +143,7 @@ std::uint8_t FunctionPrototypeAST::get_binary_operator_precedence() const {
 FunctionDefinitionAST::FunctionDefinitionAST(ParserAST &parser_ast,
                                              IdExpressionAST prototype,
                                              IdExpressionAST body)
-    : parser_ast_{parser_ast}, prototype_{prototype}, body_{body} {
+    : ExpressionAST{parser_ast}, prototype_{prototype}, body_{body} {
   // set prototype name
   const auto &expression_ast = GET_EXPRESSION_FROM_MAP(prototype);
   assert(expression_ast->type_ == ExpressionTypeAST::FunctionPrototypeAST);
@@ -150,7 +161,7 @@ Value *FunctionDefinitionAST::generate_IR_code() {
 IfExpressionAST::IfExpressionAST(ParserAST &parser_ast, IdExpressionAST _if,
                                  std::vector<IdExpressionAST> _then,
                                  std::vector<IdExpressionAST> _else)
-    : parser_ast_{parser_ast}, if_{_if}, then_{std::move(_then)},
+    : ExpressionAST{parser_ast}, if_{_if}, then_{std::move(_then)},
       else_{std::move(_else)} {
   type_ = ExpressionTypeAST::IfExpressionAST;
 }
@@ -165,7 +176,7 @@ ForExpressionAST::ForExpressionAST(ParserAST &parser_ast,
                                    IdExpressionAST start, IdExpressionAST end,
                                    IdExpressionAST step,
                                    std::vector<IdExpressionAST> body)
-    : parser_ast_{parser_ast}, variable_name_{std::move(variable_name)},
+    : ExpressionAST{parser_ast}, variable_name_{std::move(variable_name)},
       start_{start}, end_{end}, step_{step}, body_{std::move(body)} {
   type_ = ExpressionTypeAST::ForExpressionAST;
 }

@@ -9,6 +9,7 @@
 
 #include <llvm/IR/Function.h>
 
+#include <llvm/Support/CommandLine.h>
 #include <map>
 #include <memory>
 #include <string>
@@ -45,12 +46,17 @@ inline IdExpressionAST InvalidIdExpressionAST{0};
  *  Base struct for all expression nodes.
  */
 struct ExpressionAST : IRCode {
-  ExpressionAST();
+  virtual llvm::raw_ostream &dump(llvm::raw_ostream &out, int index) const;
+  explicit ExpressionAST(ParserAST &parser_ast);
   ~ExpressionAST() override = default;
+
+  [[nodiscard]] std::uint32_t get_line() const;
+  [[nodiscard]] std::uint32_t get_col() const;
 
   IdExpressionAST id_{0};
   IdExpressionAST parent_id_{0};
   ExpressionTypeAST type_{ExpressionTypeAST::Unknown};
+  ParserAST &parser_ast_;
 };
 
 /**
@@ -60,7 +66,6 @@ struct NumberExpressionAST final : public ExpressionAST {
   explicit NumberExpressionAST(ParserAST &parser_ast, double value);
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   double value_;
 };
 
@@ -72,7 +77,6 @@ struct VariableExpressionAST final : ExpressionAST {
   explicit VariableExpressionAST(ParserAST &parser_ast, std::string name);
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   std::string name_;
 };
 
@@ -87,7 +91,6 @@ struct VarExpressionAST final : ExpressionAST {
       IdExpressionAST body);
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   std::vector<std::pair<std::string, IdExpressionAST>> variables_;
   IdExpressionAST body_;
 };
@@ -100,7 +103,6 @@ struct BinaryExpressionAST final : ExpressionAST {
                                IdExpressionAST lhs, IdExpressionAST rhs);
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   ReservedToken operator_;
   IdExpressionAST lhs_, rhs_;
 };
@@ -111,7 +113,6 @@ struct UnaryExpressionAST final : ExpressionAST {
 
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   std::uint8_t operation_code_;
   IdExpressionAST operand_;
 };
@@ -125,7 +126,6 @@ struct CallExpressionAST final : ExpressionAST {
 
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   std::string callee_;
   std::vector<IdExpressionAST> arguments_;
 };
@@ -149,7 +149,6 @@ struct FunctionPrototypeAST : ExpressionAST {
   [[nodiscard]] char get_operator_name() const;
   [[nodiscard]] std::uint8_t get_binary_operator_precedence() const;
 
-  ParserAST &parser_ast_;
   std::string name_;
   std::vector<std::string> arguments_names_;
   bool is_operator_;
@@ -165,7 +164,6 @@ struct FunctionDefinitionAST : ExpressionAST {
 
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   IdExpressionAST prototype_;
   std::string prototype_name_{"none"};
   IdExpressionAST body_;
@@ -178,7 +176,6 @@ struct IfExpressionAST : public ExpressionAST {
 
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   IdExpressionAST if_;
   const std::vector<IdExpressionAST> then_;
   const std::vector<IdExpressionAST> else_;
@@ -191,7 +188,6 @@ struct ForExpressionAST : public ExpressionAST {
 
   llvm::Value *generate_IR_code() override;
 
-  ParserAST &parser_ast_;
   std::string variable_name_;
   // start_ is variable value,
   // end_ is condition expression

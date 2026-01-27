@@ -21,7 +21,7 @@ struct Lexer {
   /**
    * Constructor;
    */
-  Lexer();
+  explicit Lexer(bool is_debug_mode = false);
   /**
    * Update current token and next character token from standard input.
    *

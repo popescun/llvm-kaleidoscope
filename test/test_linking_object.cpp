@@ -3,6 +3,7 @@
 
 extern "C" {
 double mandel(double, double, double, double);
+double fib(double);
 }
 
 // extern functions, like `putch`, need to be exported from this application
@@ -19,6 +20,7 @@ extern "C" DLLEXPORT double putch(double x) {
 }
 
 int main(int argc, char *argv[]) {
-  mandel(-2.3, -1.3, 0.05, 0.07);
+  // mandel(-2.3, -1.3, 0.05, 0.07);
+  fib(10);
   return 0;
 }

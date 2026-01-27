@@ -5,8 +5,18 @@
 #include "ir_code_generator.hpp"
 #include "utils.hpp"
 
+// llvm directory contains the llvm C++ api
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Verifier.h>
+
+/**
+ * llvm-c directory contains the llvm C api. Rationale from header doc:
+ * Many exotic languages can interoperate with C code but have a harder time
+ * with C++ due to name mangling. So in addition to C, this interface enables
+ * tools written in such languages. Also C geeks would prefer this one, like in
+ * ODIN language
+ */
+// #include <llvm-c/Core.h>
 
 #include <map>
 
@@ -59,6 +69,10 @@ IRCodeGenerator::IRCodeGenerator(ParserAST &parser_ast)
 
 Value *
 IRCodeGenerator::operator()(const NumberExpressionAST &expression) const {
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
   return ConstantFP::get(*parser_ast_.llvm_context_,
                          APFloat(expression.value_));
 }
@@ -73,6 +87,12 @@ IRCodeGenerator::operator()(const VariableExpressionAST &expression) const {
         parser_ast_.lexer_.row_, parser_ast_.lexer_.col_);
     return {};
   }
+
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
+
   // load the value
   return parser_ast_.llvm_IR_builder_->CreateLoad(
       variable->getAllocatedType(), variable, expression.name_.c_str());
@@ -115,6 +135,11 @@ Value *IRCodeGenerator::operator()(const VarExpressionAST &expression) const {
     variable_names[variable_name] = alloc;
   }
 
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
+
   // code gen the body, now that all variables are in scope
   Value *body = GENERATE_IR_CODE(expression.body_);
   if (!body) {
@@ -132,7 +157,10 @@ Value *IRCodeGenerator::operator()(const VarExpressionAST &expression) const {
 
 Value *
 IRCodeGenerator::operator()(const BinaryExpressionAST &expression) const {
-
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
   // special case `=` because we don't want to gen code for `lhs` as an
   // expression
   if (expression.operator_ == ReservedToken::token_operator_assignment) {
@@ -221,10 +249,20 @@ Value *IRCodeGenerator::operator()(const UnaryExpressionAST &expression) const {
     return {};
   }
 
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
+
   return parser_ast_.llvm_IR_builder_->CreateCall(function, operand, "unop");
 }
 
 Value *IRCodeGenerator::operator()(const CallExpressionAST &expression) const {
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
+
   // look up the name in the global module table
   auto *function = get_function(parser_ast_, expression.callee_);
   if (!function) {
@@ -277,7 +315,8 @@ IRCodeGenerator::operator()(const FunctionPrototypeAST &expression) const {
 }
 
 /**
- * todo: This code does have a bug, though:
+ * todo: is this still an issue?
+ * This code does have a bug, though:
  * If the FunctionAST::codegen() method finds an existing IR Function, it does
  * not validate its signature against the definition’s own prototype. This
  * means that an earlier ‘extern’ declaration will take precedence over the
@@ -293,7 +332,7 @@ Value *
 IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
   // check for existing function from previous `extern` declaration
   // todo: does it regard all functions added to this module, not only
-  // `extern`s
+  // todo: `extern`s
   Function *function = get_function(parser_ast_, expression.prototype_name_);
   if (!function) {
     log_error("function cannot be redefined", parser_ast_.lexer_.row_,
@@ -327,20 +366,67 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
   // the end of the specified block.
   parser_ast_.llvm_IR_builder_->SetInsertPoint(basic_block);
 
+  std::uint32_t line_no{0};
+  DIFile *di_unit{nullptr};
+  DISubprogram *di_subprogram{nullptr};
+  if (parser_ast_.is_debug_mode()) {
+    // create a subprogram DIE for this function
+    di_unit = parser_ast_.llvm_DI_builder_->createFile(
+        parser_ast_.debug_info_->compile_unit_->getFilename(),
+        parser_ast_.debug_info_->compile_unit_->getDirectory());
+
+    // DIScope* di_scope = di_unit;
+    line_no = function_prototype ? function_prototype->get_line() : 0;
+    di_subprogram = parser_ast_.llvm_DI_builder_->createFunction(
+        di_unit, function_prototype ? function_prototype->name_ : "none",
+        StringRef{}, di_unit, line_no,
+        parser_ast_.debug_info_->create_function_type(function->arg_size()),
+        line_no, DINode::FlagPrototyped, DISubprogram::SPFlagDefinition);
+
+    // push the current debug scope
+    parser_ast_.debug_info_->lexical_blocks_.push_back(di_subprogram);
+
+    // unset the location for the prologue emission (leading instructions with
+    // no location in a function are considered part of the prologue and the
+    // debugger will run past them when breaking on a function)
+    parser_ast_.debug_info_->emit_location(nullptr);
+  }
+
   // record the function arguments in the function parameters map.
   // todo: how global `variable_names_` could be moved locally to a
   // todo: function definition?
   variable_names.clear();
+  unsigned arg_index{0};
   for (auto &arg : function->args()) {
     // create an alloca for this variable
     auto *alloca =
         create_entry_block_alloca(parser_ast_, function, arg.getName());
+
+    if (parser_ast_.is_debug_mode()) {
+      // create a debug descriptor for the variable
+      DILocalVariable *di_local_variable =
+          parser_ast_.llvm_DI_builder_->createParameterVariable(
+              di_subprogram, arg.getName(), ++arg_index, di_unit, line_no,
+              parser_ast_.debug_info_->get_double_type(), true);
+
+      parser_ast_.llvm_DI_builder_->insertDeclare(
+          alloca, di_local_variable,
+          parser_ast_.llvm_DI_builder_->createExpression(),
+          DILocation::get(di_subprogram->getContext(), line_no, 0,
+                          di_subprogram),
+          parser_ast_.llvm_IR_builder_->GetInsertBlock());
+    }
 
     // store the initial value into the alloca
     parser_ast_.llvm_IR_builder_->CreateStore(&arg, alloca);
 
     // add arguments to variable symbol table
     variable_names[std::string{arg.getName()}] = alloca;
+  }
+
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.body_).get());
   }
 
   Value *body_value = GENERATE_IR_CODE(expression.body_);
@@ -368,7 +454,7 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
     return {};
   }
 
-  if (function_prototype->is_binary_operator()) {
+  if (function_prototype && function_prototype->is_binary_operator()) {
     parser_ast_.lexer_.binary_op_precedence_.erase(static_cast<Token>(
         function_prototype->get_binary_operator_precedence()));
     return {};
@@ -380,10 +466,20 @@ IRCodeGenerator::operator()(const FunctionDefinitionAST &expression) const {
         *function, *parser_ast_.function_analysis_manager_);
   }
 
+  if (parser_ast_.is_debug_mode()) {
+    // pop off the lexical block for the function
+    parser_ast_.debug_info_->lexical_blocks_.pop_back();
+  }
+
   return function;
 }
 
 Value *IRCodeGenerator::operator()(const IfExpressionAST &expression) const {
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
+
   Value *if_value = GENERATE_IR_CODE(expression.if_);
   if (!if_value) {
     return {};
@@ -487,6 +583,11 @@ Value *IRCodeGenerator::operator()(const ForExpressionAST &expression) const {
   // create an alloca for the variable in the entry block.
   auto *alloca = create_entry_block_alloca(parser_ast_, parent_function,
                                            expression.variable_name_);
+
+  if (parser_ast_.is_debug_mode()) {
+    parser_ast_.debug_info_->emit_location(
+        GET_EXPRESSION_FROM_MAP(expression.id_).get());
+  }
 
   // first, codegen the start code, without variable in scope
   Value *start_value = GENERATE_IR_CODE(expression.start_);
